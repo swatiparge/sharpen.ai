@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "senior-fullstack": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "67e1aee91de0fcce995133a6fa9eda1616f4b9f78be12d9ab7bb0c48603db782"
+    }
+  }
+}
