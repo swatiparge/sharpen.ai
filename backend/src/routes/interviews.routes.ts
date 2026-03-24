@@ -39,7 +39,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     return res.json(result.rows);
 });
 
-// GET /interviews/:id – interview with metrics
+// GET /interviews/:id – interview with metrics + calibration context
 router.get('/:id', async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const interview = await db.query(
@@ -52,7 +52,20 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
         'SELECT * FROM metrics WHERE interview_id = $1',
         [id]
     );
-    return res.json({ ...interview.rows[0], metrics: metrics.rows });
+
+    // Fetch experience level for calibration badge
+    const profile = await db.query(
+        'SELECT target_level FROM onboarding_profiles WHERE user_id = $1',
+        [req.userId]
+    );
+    const experienceLevel = profile.rows[0]?.target_level || null;
+
+    console.log(`[API] Returning interview ${id}. Metrics count: ${metrics.rows.length}`);
+    if (metrics.rows.length > 0) {
+        console.log(`[API] Metrics: ${metrics.rows.map(m => m.metric_name).join(', ')}`);
+    }
+
+    return res.json({ ...interview.rows[0], metrics: metrics.rows, experience_level: experienceLevel });
 });
 
 // POST /interviews/:id/media-url – get signed S3 upload URL
@@ -199,6 +212,43 @@ router.post('/:id/reconstruction', validate(reconstructionSchema), async (req: A
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'Failed to save reconstruction' });
+    }
+});
+
+// POST /interviews/:id/metrics/:metricName/feedback – user-feedback on scoring (trust building)
+router.post('/:id/metrics/:metricName/feedback', async (req: AuthRequest, res: Response) => {
+    const { id, metricName } = req.params;
+    const { feedback_type, user_score, comment } = req.body; // feedback_type: 'AGREE' | 'DISAGREE'
+
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS metric_feedback (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                metric_id UUID REFERENCES metrics(id),
+                user_id UUID REFERENCES users(id),
+                feedback_type TEXT NOT NULL,
+                user_score FLOAT,
+                comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        // Find the metric
+        const metric = await db.query(
+            'SELECT id FROM metrics WHERE interview_id = $1 AND metric_name = $2',
+            [id, metricName]
+        );
+        if (!metric.rows[0]) return res.status(404).json({ error: 'Metric not found' });
+
+        await db.query(
+            'INSERT INTO metric_feedback (metric_id, user_id, feedback_type, user_score, comment) VALUES ($1, $2, $3, $4, $5)',
+            [metric.rows[0].id, req.userId, feedback_type, user_score, comment]
+        );
+
+        return res.json({ message: 'Feedback saved' });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Failed to save feedback' });
     }
 });
 

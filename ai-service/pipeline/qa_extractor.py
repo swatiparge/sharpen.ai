@@ -2,13 +2,15 @@
 
 import json
 import os
-from openai import OpenAI
-from models.transcript import Transcript
+from openai import OpenAI, APIError
+from pipeline.utils import retry_llm_call
+
+from models.transcript import Transcript, SpeakerTurn
 from models.qa import QAPair
 
 # NVIDIA NIM uses OpenAI-compatible API
 nvidia_client = None
-NVIDIA_MODEL = "qwen/qwen2.5-72b-instruct"
+NVIDIA_MODEL = "qwen/qwen2.5-7b-instruct"
 
 
 def _get_client() -> OpenAI:
@@ -25,92 +27,83 @@ def _get_client() -> OpenAI:
     return nvidia_client
 
 
-QA_EXTRACTION_PROMPT = """
-You are analyzing an interview transcript.
-Extract all question-answer pairs from the INTERVIEWER and CANDIDATE.
+# ── Rule-based Q&A grouping (fast, no LLM) ───────────────────────
 
-Rules:
-- Only extract actual interview questions — ignore greetings, small talk
-- Group follow-up questions on the same topic into one QA pair
-- Preserve the candidate's answer EXACTLY as spoken — do not clean or improve it
-- Detect the topic of each question (system design / behavioral / technical / hr)
-- Return ONLY valid JSON. No explanation. No markdown. No backticks.
+def _rule_based_extract(turns: list[SpeakerTurn]) -> list[dict]:
+    """
+    Group consecutive speaker turns into Q&A pairs using AssemblyAI speaker labels.
+    The transcriber already labels speakers as 'INTERVIEWER' or 'CANDIDATE'.
+    This is instantaneous — zero LLM calls required.
+    """
+    if not turns:
+        return []
 
-JSON format:
-[
-  {{
-    "question_number": 1,
-    "question": "full question text",
-    "answer": "candidate's full answer verbatim",
-    "follow_ups": ["follow up question if any"],
-    "follow_up_answers": ["candidate answer to follow up"],
-    "topic": "technical | behavioral | system_design | hr | other"
-  }}
-]
+    qa_pairs = []
+    current_question = []
+    current_answer = []
+    question_number = 0
+    in_question = False
 
-Transcript:
-{transcript}
-"""
+    for turn in turns:
+        is_interviewer = (turn.speaker.upper() == "INTERVIEWER")
+        text = turn.text.strip()
+        if not text:
+            continue
 
+        if is_interviewer:
+            # If we already have a complete Q&A pair, save it
+            if current_question and current_answer:
+                question_number += 1
+                qa_pairs.append({
+                    "question_number": question_number,
+                    "question": " ".join(current_question).strip(),
+                    "answer": " ".join(current_answer).strip(),
+                    "follow_ups": [],
+                    "follow_up_answers": [],
+                    "topic": "other"
+                })
+                current_question = []
+                current_answer = []
+            current_question.append(text)
+            in_question = True
+        else:
+            # Candidate speaking
+            if in_question:
+                current_answer.append(text)
+
+    # Don't forget the last pair
+    if current_question and current_answer:
+        question_number += 1
+        qa_pairs.append({
+            "question_number": question_number,
+            "question": " ".join(current_question).strip(),
+            "answer": " ".join(current_answer).strip(),
+            "follow_ups": [],
+            "follow_up_answers": [],
+            "topic": "other"
+        })
+
+    # Filter out very short exchanges that are likely greetings/filler
+    meaningful = [p for p in qa_pairs if len(p["answer"].split()) > 5]
+    print(f"[QA Extractor] Rule-based extraction found {len(meaningful)} meaningful QA pairs")
+    return meaningful
+
+
+# ── Main entry point ──────────────────────────────────────────────
 
 def extract_qa_pairs(transcript: Transcript) -> list[QAPair]:
     """
-    Extract structured QA pairs from labeled transcript turns.
-    Uses Qwen 3.5 on NVIDIA NIM for semantic understanding.
+    Extract structured QA pairs from a diarized transcript.
+    Uses rule-based speaker-turn grouping — zero LLM calls, instant.
     """
-    client = _get_client()
-
-    # Build transcript string
-    transcript_text = "\n".join([
-        f"{turn.speaker}: {turn.text}"
-        for turn in transcript.turns
-    ])
-
     print(f"[QA Extractor] Extracting QA pairs from {len(transcript.turns)} turns...")
 
-    response = client.chat.completions.create(
-        model=NVIDIA_MODEL,
-        messages=[
-            {
-                "role": "user",
-                "content": QA_EXTRACTION_PROMPT.format(transcript=transcript_text)
-            }
-        ],
-        temperature=0.1,     # low = more deterministic for structured extraction
-        max_tokens=4000
-    )
+    raw_pairs = _rule_based_extract(transcript.turns)
 
-    raw = response.choices[0].message.content
-    clean = raw.strip().replace("```json", "").replace("```", "").strip()
+    if not raw_pairs:
+        print("[QA Extractor] ⚠️ No QA pairs found via rule-based extraction.")
+        return []
 
-    try:
-        pairs = json.loads(clean)
-    except json.JSONDecodeError:
-        # Retry once with stricter prompt if JSON parsing fails
-        print("[QA Extractor] ⚠️ JSON parse failed, retrying with stricter prompt...")
-        pairs = _retry_extraction(client, transcript_text)
-
-    result = [QAPair(**p) for p in pairs]
-    print(f"[QA Extractor] ✅ Extracted {len(result)} QA pairs")
+    result = [QAPair(**p) for p in raw_pairs]
+    print(f"[QA Extractor] ✅ Extracted {len(result)} QA pairs (instant, no LLM)")
     return result
-
-
-def _retry_extraction(client: OpenAI, transcript_text: str) -> list[dict]:
-    """Fallback: stricter prompt if first attempt returns invalid JSON."""
-    response = client.chat.completions.create(
-        model=NVIDIA_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": "You output only valid JSON arrays. Nothing else. No explanation."
-            },
-            {
-                "role": "user",
-                "content": f"Extract QA pairs from this interview transcript as a JSON array:\n\n{transcript_text}"
-            }
-        ],
-        temperature=0.0,
-        max_tokens=4000
-    )
-    raw = response.choices[0].message.content.strip()
-    return json.loads(raw)

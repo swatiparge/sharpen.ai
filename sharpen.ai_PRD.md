@@ -1,4 +1,4 @@
-# InterviewOS PRD
+# sharpen.ai PRD
 
 **Tagline:** Grammarly for Interviews\
 **Positioning:** The Career Performance Analytics Platform for
@@ -8,7 +8,7 @@ Candidates. Track. Improve. Measure.
 
 ## 1. Executive Summary
 
-InterviewOS is an AI-powered Career Performance Analytics Platform
+sharpen.ai is an AI-powered Career Performance Analytics Platform
 designed for job candidates.
 
 It records and analyzes real interview conversations (audio/screen),
@@ -195,7 +195,7 @@ Encrypted recordings - High transcription accuracy
 
 ChatGPT: - General conversation tool
 
-InterviewOS: - Structured performance tracking engine - Longitudinal
+sharpen.ai: - Structured performance tracking engine - Longitudinal
 analytics - Pattern detection - Skill graph visualization - Adaptive
 improvement roadmap - Benchmark calibration
 
@@ -253,6 +253,6 @@ engine
 
 ## 15. Strategic Identity
 
-InterviewOS is not: - A tool - A feature - A chatbot
+sharpen.ai is not: - A tool - A feature - A chatbot
 
 It is: \> A Career Performance Intelligence Platform.

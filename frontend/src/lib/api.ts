@@ -120,3 +120,46 @@ export async function triggerAnalysis(token: string, interviewId: string) {
         token,
     });
 }
+
+export interface MetricExample {
+    id: string;
+    label: string;      // 'STRONG EXAMPLE' | 'MISSED OPPORTUNITY'
+    comment: string;    // the quote / explanation
+    segment_text?: string;
+    question_text?: string;
+}
+
+export interface MetricDetail {
+    id: string;
+    interview_id: string;
+    metric_name: string;
+    score: number;
+    explanation_summary: string;
+    examples: MetricExample[];
+}
+
+export async function getMetricDetail(token: string, interviewId: string, metricName: string) {
+    return api<MetricDetail>(`/interviews/${interviewId}/metrics/${metricName}`, { token });
+}
+
+export async function sendMetricFeedback(token: string, interviewId: string, metricName: string, data: {
+    feedback_type: 'AGREE' | 'DISAGREE';
+    user_score?: number;
+    comment?: string;
+}) {
+    return api(`/interviews/${interviewId}/metrics/${metricName}/feedback`, {
+        method: 'POST',
+        token,
+        body: data,
+    });
+}
+
+// ── Learn API ───────────────────────────────────────────────
+
+export async function generateLesson(token: string, topic: string) {
+    return api('/learn/generate', {
+        method: 'POST',
+        token,
+        body: { topic },
+    });
+}

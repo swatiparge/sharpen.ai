@@ -112,17 +112,26 @@
 [0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 263.667 ms - -[0m
 [Auth] Token validated for user: 56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9
 [0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 255.777 ms - -[0m
-[Auth] Token validated for user: 56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9
-[0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 261.718 ms - -[0m
-[Auth] Token validated for user: 56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9
-[0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 273.782 ms - -[0m
-[Auth] Token validated for user: 56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9
-[0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 261.941 ms - -[0m
-[Auth] Token validated for user: 56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9
-[0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 262.401 ms - -[0m
-[Auth] Token validated for user: 56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9
-[0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 254.020 ms - -[0m
-[Auth] Token validated for user: 56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9
+[Auth] Token validat[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/index.ts`[39m
+✅ Analysis worker started
+✅ Redis connected
+✅ PostgreSQL connected
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at Server.listen (node:net:2170:7)
+    at app.listen (/Users/apple/Documents/Work/InterviewOs/backend/node_modules/express/lib/application.js:635:24)
+    at bootstrap (/Users/apple/Documents/Work/InterviewOs/backend/src/index.ts:144:9)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m
+4359-8c7f-2e4f9b3c00d9
 [0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 255.411 ms - -[0m
 [Auth] Token validated for user: 56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9
 [0mGET /interviews/83801cfa-7b8d-4327-beb9-6a3cb9b33d45 [36m304[0m 263.485 ms - -[0m
@@ -3534,3 +3543,13 @@ Error: connect EHOSTUNREACH 2406:da14:271:9908:11ff:28ee:dd75:5234:5432 - Local 
   port: 5432
 }
 [31m[nodemon] app crashed - waiting for file changes before starting...[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/index.ts`[39m
+✅ Analysis worker started
+✅ Redis connected
+✅ PostgreSQL connected
+
+🚀 swadhyaya.ai API running at http://localhost:3000
+   Health: http://localhost:3000/health
+   Env:    development
+

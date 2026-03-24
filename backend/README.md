@@ -1,4 +1,4 @@
-# InterviewOS Backend
+# sharpen.ai Backend
 
 AI-powered Interview Performance Analytics — REST API server.
 
@@ -25,7 +25,7 @@ cp .env.example .env
 
 ### 3. Start PostgreSQL and Redis (Docker)
 ```bash
-docker run -d --name postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=interviewos -p 5432:5432 postgres:16
+docker run -d --name postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=sharpen_db -p 5432:5432 postgres:16
 docker run -d --name redis -p 6379:6379 redis:7
 ```
 

@@ -2,14 +2,18 @@
 
 import json
 import os
-from openai import OpenAI
+import time
+import concurrent.futures
+from openai import OpenAI, APIError
+from pipeline.utils import retry_llm_call
+
 from config.metrics import METRICS
 from models.qa import QAPair
 from models.report import MetricScore, AnswerAnalysis
 
 # NVIDIA NIM uses OpenAI-compatible API
 nvidia_client = None
-NVIDIA_MODEL = "qwen/qwen2.5-72b-instruct"
+NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"
 
 
 def _get_client() -> OpenAI:
@@ -46,6 +50,7 @@ def build_scoring_prompt(
 
     return f"""
 You are an expert interview coach and former technical interviewer at top tech companies.
+Your goal is to provide HIGH-STAKES feedback that helps a candidate land a Tier-1 tech job.
 
 CONTEXT:
 - Job Role: {job_role}
@@ -63,42 +68,49 @@ FOLLOW-UP QUESTIONS: {qa_pair.follow_ups}
 FOLLOW-UP ANSWERS: {qa_pair.follow_up_answers}
 
 YOUR TASK:
-Score this answer on all 8 metrics below.
+1. First, assess if this question-answer pair is a 'High-Value Technical/Behavioral exchange' or just 'Administrative/Introductory boilerplate'.
+2. Score this answer on the 8 metrics below. Each score should be calibrated to the {experience_level} year experience level.
+3. RELEVANCE RULE: If a metric is COMPLETELY irrelevant to the question asked (e.g., scoring an 'Introduce yourself' prompt for 'Technical Depth' or 'Tradeoff Awareness'), set "is_relevant": false and "score": 0.0.
+4. Crucially, your feedback must be CRITICAL and ACTIONABLE. Avoid generic praise.
 
 {metrics_text}
 
-STRICT RULES:
-1. Score each metric 1.0 to 10.0 (decimals allowed e.g. 6.5)
-2. Score labels: 1-3="Weak", 4-5="Developing", 6-7="Solid", 8-9="Strong", 10="Exceptional"
-3. evidence_quote MUST be copied VERBATIM from the candidate's answer above
-4. If score < 7: what_went_wrong must be specific to THIS answer, not generic advice
-5. If score < 8: improved_version must rewrite THIS specific answer better
-6. followup_handling: return null score if no follow_ups exist
-7. Calibrate technical_depth and seniority_alignment to the experience level
-8. Do NOT penalize creative solutions — only factually incorrect ones
-9. Return ONLY valid JSON. No explanation. No markdown. No backticks.
+STRICT RESPONSE RULES:
+1. is_relevant: true if the metric applies meaningfully, false if it's a stretch or irrelevant (always a boolean).
+2. Score: 1.0 to 10.0 if relevant. If is_relevant is false, score MUST be 0.0.
+3. 7.0 is "Solid" (Hirable), 8.5+ is "Exceptional" (Top 5% of candidates).
+4. evidence_quote: Copy a short EXACT verbatim quote from the candidate's answer that proves your score. If their answer was too short to quote, leave empty.
+5. rationale: CRITICAL INSTRUCTION - Do NOT just write "The candidate failed to X." If the score is low, you MUST provide a concrete contrasting example of what they SHOULD have said instead, directly related to their specific answer. (e.g. "Instead of just saying 'State manages data', you should have said 'State is immutable data that triggers a UI re-render when updated via setState'").
+6. what_went_wrong: Be direct and specific about the exact technical or behavioral misstep.
+7. tips: Provide exactly 2 concise, actionable tips.
+
+Return ONLY a valid JSON object. No markdown. No explanation.
 
 JSON format:
 {{
   "question_number": {qa_pair.question_number},
   "overall_answer_score": 7.5,
-  "summary": "One sentence assessment of this answer",
+  "summary": "2-sentence assessment.",
   "metrics": [
     {{
       "metric_id": "communication_clarity",
       "metric_name": "Communication Clarity",
+      "is_relevant": true,
       "score": 7.5,
       "label": "Solid",
-      "evidence_quote": "exact verbatim quote from their answer",
-      "what_went_wrong": "specific issue or null",
-      "improved_version": "rewritten answer or null",
-      "tips": ["tip 1", "tip 2", "tip 3"]
-    }}
+      "evidence_quote": "exact verbatim quote",
+      "rationale": "Concrete contrasting example of what to say instead, or why the quote was strong.",
+      "what_went_wrong": "specific issue",
+      "tips": ["Tip 1", "Tip 2"]
+    }},
+    {{ "metric_id": "structural_thinking", "metric_name": "...", "is_relevant": false, "score": 0.0, ... }},
+    "... (Repeat for all 8 metrics)"
   ]
 }}
 """
 
 
+@retry_llm_call(max_retries=1)
 def score_answer(
     qa_pair: QAPair,
     job_role: str,
@@ -116,8 +128,8 @@ def score_answer(
     response = client.chat.completions.create(
         model=NVIDIA_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-        max_tokens=3000
+        temperature=0.0,
+        max_tokens=2500
     )
 
     raw = response.choices[0].message.content
@@ -129,12 +141,19 @@ def score_answer(
         raise ValueError(f"Failed to parse scoring response for Q{qa_pair.question_number}: {e}")
 
     metric_scores = [MetricScore(**m) for m in data["metrics"]]
+    
+    # Capture token usage
+    usage = getattr(response, 'usage', None)
+    prompt_tokens = usage.prompt_tokens if usage else 0
+    completion_tokens = usage.completion_tokens if usage else 0
 
     return AnswerAnalysis(
         qa_pair=qa_pair,
         metrics=metric_scores,
         overall_answer_score=data["overall_answer_score"],
-        summary=data["summary"]
+        summary=data["summary"],
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens
     )
 
 
@@ -145,11 +164,41 @@ def score_all_answers(
     experience_level: str,
     company: str = None
 ) -> list[AnswerAnalysis]:
-    """Score all QA pairs sequentially."""
-    results = []
-    for i, qa in enumerate(qa_pairs):
-        print(f"[Scorer] Scoring answer {i+1}/{len(qa_pairs)}: Q{qa.question_number}...")
-        analysis = score_answer(qa, job_role, interview_round, experience_level, company)
-        results.append(analysis)
-    print(f"[Scorer] ✅ All {len(results)} answers scored")
-    return results
+    """Score all QA pairs concurrently using ThreadPoolExecutor."""
+    if not qa_pairs:
+        return []
+
+    results = [None] * len(qa_pairs)
+
+    print(f"[Scorer] Scoring {len(qa_pairs)} answers (max 2 concurrent to avoid NVIDIA rate limits)...")
+
+    def _score_and_store(index: int, qa: QAPair):
+        print(f"[Scorer] Starting Q{qa.question_number}...")
+        try:
+            analysis = score_answer(qa, job_role, interview_round, experience_level, company)
+            results[index] = analysis
+            print(f"[Scorer] ✅ Q{qa.question_number} finished.")
+        except Exception as e:
+            print(f"[Scorer] ❌ Failed to score Q{qa.question_number}: {e}")
+            # If a strict failure happens after retries, we could inject a dummy or raise
+            raise
+
+    # Keep max_workers at 2 for NVIDIA NIM free tier to avoid rate-limiting 504s.
+    # All 7 firing at once overwhelms the endpoint; 2 at a time is the sweet spot.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        futures = []
+        for i, qa in enumerate(qa_pairs):
+            futures.append(executor.submit(_score_and_store, i, qa))
+            time.sleep(0.5)  # small stagger to avoid hitting NVIDIA simultaneously
+        concurrent.futures.wait(futures)
+        
+        # Check for any exceptions that bubbled up
+        for future in futures:
+            if future.exception() is not None:
+                raise future.exception()
+
+    # Filter out any Nones if failure policies change in the future
+    valid_results = [r for r in results if r is not None]
+    
+    print(f"[Scorer] ✅ All {len(valid_results)} answers scored successfully")
+    return valid_results

@@ -1,5 +1,5 @@
 """
-InterviewOS AI Analysis Service
+sharpen.ai AI Analysis Service
 FastAPI server that orchestrates the full audio analysis pipeline.
 
 Pipeline: Audio → AssemblyAI (transcription + diarization) → QA Extraction → Scoring → Report
@@ -10,6 +10,8 @@ import os
 import traceback
 import uuid
 import shutil
+import hashlib
+import json
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -21,11 +23,13 @@ from pipeline.transcriber import transcribe_and_diarize
 from pipeline.qa_extractor import extract_qa_pairs
 from pipeline.scorer import score_all_answers
 from pipeline.report_builder import build_report
+from pipeline.learn_generator import generate_topic_lesson
+from models.qa import QAPair
 
 load_dotenv()
 
 app = FastAPI(
-    title="InterviewOS AI Service",
+    title="sharpen.ai AI Service",
     description="AI pipeline for interview audio analysis using AssemblyAI + NVIDIA NIM (Qwen 3.5)",
     version="2.0.0",
 )
@@ -56,13 +60,84 @@ class AnalyzeResponse(BaseModel):
     vocal_signals: dict
     metrics: dict
     transcript: list
-    patterns: list
-    roadmap: list
+    top_strengths: list = []
+    key_improvement_areas: list = []
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+class ReconstructionRequest(BaseModel):
+    interview_id: str
+    qa_pairs: list[QAPair]
+    metadata: dict = {}
+
+class GenerateLessonRequest(BaseModel):
+    topic: str
+
+
+
+def _format_analysis_result(report, analyses, transcript_output: list) -> AnalyzeResponse:
+    """Helper to convert a report and analyses into an AnalyzeResponse."""
+    
+    metrics_dict: dict = {}
+    for metric_id, avg_score in report.metric_averages.items():
+        all_tips: list[str] = []
+        all_examples: list[dict] = []
+        
+        for analysis in analyses:
+            for ms in analysis.metrics:
+                if ms.metric_id != metric_id or not ms.is_relevant:
+                    continue
+                
+                if ms.rationale or ms.evidence_quote:
+                    label = "STRONG EXAMPLE" if (ms.score or 0) >= 7.0 else "MISSED OPPORTUNITY"
+                    comment = ms.rationale if ms.rationale else f"Based on: \"{ms.evidence_quote}\""
+                    
+                    all_examples.append({
+                        "label": label,
+                        "text": comment,
+                        "question_text": analysis.qa_pair.question,
+                        "segment_text": ms.evidence_quote
+                    })
+
+                for tip in (ms.tips or []):
+                    if tip and tip not in all_tips:
+                        all_tips.append(tip)
+
+        if all_tips:
+            explanation = " | ".join(all_tips[:4])
+        else:
+            explanation = f"Analysis based on {len(analyses)} answers."
+
+        metrics_dict[metric_id] = {
+            "score": avg_score,
+            "explanation": explanation,
+            "examples": all_examples[:6],
+        }
+
+    return AnalyzeResponse(
+        overall_score=report.overall_score,
+        summary=report.level_gap_summary,
+        badge=_score_to_badge(report.overall_score),
+        vocal_signals={},
+        metrics=metrics_dict,
+        transcript=transcript_output,
+        top_strengths=report.top_strengths,
+        key_improvement_areas=report.key_improvement_areas,
+        prompt_tokens=report.prompt_tokens,
+        completion_tokens=report.completion_tokens
+    )
 
 
 class TextAnalyzeRequest(BaseModel):
     text: str
-    analysis_type: str = "reconstruction"
+    analysis_type: str = "reconstruction"  # 'reconstruction' or 'simulation'
+    metadata: dict = {}
+
+
+class ReconstructionRequest(BaseModel):
+    interview_id: str
+    qa_pairs: list[QAPair]
     metadata: dict = {}
 
 
@@ -72,7 +147,7 @@ class TextAnalyzeRequest(BaseModel):
 def health():
     return {
         "status": "ok",
-        "service": "InterviewOS AI Service",
+        "service": "sharpen.ai AI Service",
         "version": "2.0.0",
         "providers": {
             "transcription": "AssemblyAI",
@@ -102,6 +177,21 @@ async def analyze_audio(req: AnalyzeRequest):
         # ── Step 1: Transcription + Diarization (AssemblyAI) ─────
         print(f"[Pipeline] Step 1/4: Transcribing audio and detecting speakers...")
         transcript = transcribe_and_diarize(req.audio_url, session_id)
+        
+        # ── Step 1.5: Detailed Analysis Cache Check ─────────────
+        # If the same audio is analyzed with the SAME metadata, return cached result.
+        audio_hash = transcript.audio_hash
+        metadata_str = f"{req.metadata.get('current_role', '')}|{req.metadata.get('target_level', '')}|{req.metadata.get('company', '')}|{req.metadata.get('round', '')}"
+        metadata_hash = hashlib.sha256(metadata_str.encode()).hexdigest()[:12]
+        
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        analysis_cache_path = os.path.join(project_root, "cache", f"analysis_{audio_hash}_{metadata_hash}.json")
+        
+        if os.path.exists(analysis_cache_path):
+            print(f"[Pipeline] ⚡ Found cached analysis result, bypassing LLM pipeline!")
+            with open(analysis_cache_path, "r") as f:
+                return json.load(f)
+
         print(f"[Pipeline] ✅ Step 1/4: Transcription complete ({len(transcript.turns)} utterances)")
 
         # ── Step 2: Extract QA pairs (NVIDIA NIM) ────────────────
@@ -133,7 +223,7 @@ async def analyze_audio(req: AnalyzeRequest):
         report = build_report(session_data, analyses)
         print(f"[Pipeline] ✅ Step 4/4: Report complete")
 
-        # ── Build response (backward-compatible with backend worker) ──
+        # ── Build response ──
         transcript_output = [
             {
                 "speaker": turn.speaker,
@@ -144,53 +234,18 @@ async def analyze_audio(req: AnalyzeRequest):
             for turn in transcript.turns
         ]
 
-        # Convert per-answer metric scores to the metric dict format the backend expects
-        metrics_dict = {}
-        for metric_id, avg_score in report.metric_averages.items():
-            metrics_dict[metric_id] = {
-                "score": avg_score,
-                "explanation": f"Average score across {len(analyses)} answers",
-                "examples": [],
-            }
-
-        # Build patterns from weaknesses
-        patterns = [
-            {
-                "type": "WEAKNESS",
-                "title": weakness,
-                "description": f"Recurring weakness identified across answers",
-                "severity": "MEDIUM",
-                "impact": "May affect interview outcome",
-            }
-            for weakness in report.recurring_weaknesses
-        ]
-
-        # Build roadmap from priority improvements
-        roadmap = []
-        if report.priority_improvements:
-            roadmap.append({
-                "week_label": "Week 1-2",
-                "theme": "Priority Improvements",
-                "tasks": [f"Work on improving {imp}" for imp in report.priority_improvements],
-            })
-
-        result = AnalyzeResponse(
-            overall_score=report.overall_score,
-            summary=report.level_gap_summary,
-            badge=_score_to_badge(report.overall_score),
-            vocal_signals={},  # No spaCy metrics — LLM handles analysis
-            metrics=metrics_dict,
-            transcript=transcript_output,
-            patterns=patterns,
-            roadmap=roadmap,
-        )
+        result = _format_analysis_result(report, analyses, transcript_output)
+        
+        # ── Step 5: Cache the final result ───────────────────────
+        try:
+            with open(analysis_cache_path, "w") as f:
+                json.dump(result.dict(), f)
+            print(f"[Pipeline] Saved analysis result to cache: {os.path.basename(analysis_cache_path)}")
+        except Exception as e:
+            print(f"[Pipeline] Warning: Failed to cache analysis result: {e}")
 
         print(f"\n{'='*60}")
         print(f"[Pipeline] ✅ Analysis complete for interview {session_id}")
-        print(f"   Score: {result.overall_score}/10 | Badge: {result.badge}")
-        print(f"   QA Pairs: {len(qa_pairs)} | Metrics: {len(result.metrics)}")
-        print(f"{'='*60}\n")
-
         return result
 
     except Exception as e:
@@ -200,6 +255,50 @@ async def analyze_audio(req: AnalyzeRequest):
 
 
 # ── Text-only analysis endpoint (for reconstruction/simulation) ──
+
+@app.post("/analyze-reconstruction")
+async def analyze_reconstruction(req: ReconstructionRequest):
+    """
+    Dedicated endpoint for reconstructed interviews.
+    Receives structured QA pairs from the frontend via backend worker.
+    """
+    try:
+        session_id = req.interview_id
+        job_role = req.metadata.get("current_role", "")
+        experience_level = req.metadata.get("target_level", "")
+        company = req.metadata.get("company", "")
+        interview_round = req.metadata.get("round", "")
+
+        print(f"\n{'='*60}")
+        print(f"[Pipeline] Starting RECONSTRUCTION analysis for interview {session_id}")
+        print(f"{'='*60}")
+
+        # Step 1: Score each answer
+        analyses = score_all_answers(
+            req.qa_pairs, job_role, interview_round, experience_level, company
+        )
+
+        # Step 2: Build report
+        session_data = {
+            "session_id": session_id,
+            "job_role": job_role,
+            "interview_round": interview_round,
+            "experience_level": experience_level,
+            "company": company,
+        }
+        report = build_report(session_data, analyses)
+
+        # Step 3: Format response
+        result = _format_analysis_result(report, analyses, []) # Empty transcript for reconstruction
+        
+        print(f"[Pipeline] ✅ Reconstruction analysis complete for interview {session_id}")
+        return result
+
+    except Exception as e:
+        print(f"[Pipeline] ❌ Reconstruction analysis failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/analyze-text")
 async def analyze_text(req: TextAnalyzeRequest):
@@ -250,19 +349,25 @@ async def analyze_text(req: TextAnalyzeRequest):
             "vocal_signals": {},
             "metrics": metrics_dict,
             "transcript": [],
-            "patterns": [
-                {"type": "WEAKNESS", "title": w, "description": "Recurring weakness",
-                 "severity": "MEDIUM", "impact": "May affect interview outcome"}
-                for w in report.recurring_weaknesses
-            ],
-            "roadmap": [
-                {"week_label": "Week 1-2", "theme": "Priority Improvements",
-                 "tasks": [f"Work on improving {imp}" for imp in report.priority_improvements]}
-            ] if report.priority_improvements else [],
+            "top_strengths": report.top_strengths,
+            "key_improvement_areas": report.key_improvement_areas
         }
 
     except Exception as e:
         print(f"[TextAnalysis] ❌ Failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate-lesson")
+async def generate_lesson(req: GenerateLessonRequest):
+    try:
+        print(f"\n{'='*60}")
+        print(f"[Learn] Generating lesson for topic: {req.topic}")
+        lesson = generate_topic_lesson(req.topic)
+        print(f"[Learn] ✅ Lesson generated successfully")
+        return lesson
+    except Exception as e:
+        print(f"[Learn] ❌ Lesson generation failed: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 

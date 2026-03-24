@@ -6,18 +6,21 @@ from .qa import QAPair
 class MetricScore(BaseModel):
     metric_id:        str
     metric_name:      str
-    score:            float          # 1.0 to 10.0
-    label:            str            # Weak / Developing / Solid / Strong / Exceptional
-    evidence_quote:   str            # verbatim quote from candidate's answer
-    what_went_wrong:  Optional[str]  # specific issue if score < 7
-    improved_version: Optional[str]  # rewritten answer showing improvement
-    tips:             list[str]      # 2-3 actionable tips
+    is_relevant:      bool = True            # Whether this metric applies to the specific Q&A
+    score:            Optional[float] = 5.0  # default 5.0 if LLM returns null
+    label:            Optional[str] = "Developing"
+    evidence_quote:   Optional[str] = ""     # safe default if LLM returns null
+    rationale:        Optional[str] = ""     # why this specific score was given for this question
+    what_went_wrong:  Optional[str] = None
+    tips:             list[str] = []         # 2 concise tips
 
 class AnswerAnalysis(BaseModel):
     qa_pair:             QAPair
     metrics:             list[MetricScore]
     overall_answer_score: float
     summary:             str
+    prompt_tokens:       int = 0
+    completion_tokens:   int = 0
 
 class InterviewReport(BaseModel):
     session_id:           str
@@ -32,3 +35,7 @@ class InterviewReport(BaseModel):
     strongest_areas:      list[str]
     priority_improvements: list[str]
     level_gap_summary:    str
+    top_strengths:        list[dict] = []  # dict with 'title' and 'description'
+    key_improvement_areas: list[dict] = [] # dict with 'title' and 'description'
+    prompt_tokens:        int = 0
+    completion_tokens:    int = 0

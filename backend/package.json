@@ -1,7 +1,7 @@
 {
-    "name": "interviewos-backend",
+    "name": "sharpen-backend",
     "version": "1.0.0",
-    "description": "InterviewOS – AI-powered interview performance analytics backend",
+    "description": "sharpen.ai – AI-powered interview performance analytics backend",
     "main": "dist/index.js",
     "scripts": {
         "dev": "nodemon",

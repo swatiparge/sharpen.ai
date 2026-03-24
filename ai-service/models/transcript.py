@@ -9,5 +9,6 @@ class SpeakerTurn(BaseModel):
 
 class Transcript(BaseModel):
     session_id:          str
+    audio_hash:          str = ""
     turns:               list[SpeakerTurn]
     candidate_text_only: str  # all candidate speech joined

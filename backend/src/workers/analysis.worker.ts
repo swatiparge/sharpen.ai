@@ -24,9 +24,10 @@ interface AnalysisResult {
     summary: string;
     badge: string;
     vocal_signals?: any;
-    metrics?: Record<string, { score: number; explanation: string; examples?: { text: string; label: string }[] }>;
+    metrics?: Record<string, { score: number; explanation: string; examples?: { text: string; label: string; question_text?: string }[] }>;
     transcript?: { speaker: string; text: string; start_ms: number; end_ms: number }[];
-    patterns?: { type: string; title: string; description: string; severity: string; impact: string }[];
+    top_strengths?: { title: string; description: string }[];
+    key_improvement_areas?: { title: string; description: string }[];
     roadmap?: { week_label: string; theme: string; tasks: string[] }[];
 }
 
@@ -35,90 +36,118 @@ async function saveAnalysisResults(
     userId: string,
     analysis: AnalysisResult
 ): Promise<void> {
-    // Save overall score + summary + vocal signals
-    await db.query(
-        'UPDATE interviews SET overall_score=$1, summary_text=$2, badge_label=$3, vocal_signals=$4, status=$5 WHERE id=$6',
-        [
-            analysis.overall_score,
-            analysis.summary,
-            analysis.badge,
-            JSON.stringify(analysis.vocal_signals || null),
-            'ANALYZED',
-            interviewId,
-        ]
-    );
+    // Ensure columns exist (cheap operation in PG)
+    await db.query(`ALTER TABLE interviews ADD COLUMN IF NOT EXISTS top_strengths JSONB;`);
+    await db.query(`ALTER TABLE interviews ADD COLUMN IF NOT EXISTS key_improvement_areas JSONB;`);
+    await db.query(`ALTER TABLE metric_examples ADD COLUMN IF NOT EXISTS question_text TEXT;`);
+    await db.query(`
+        DO $$ 
+        BEGIN 
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_interview_metric') THEN 
+                ALTER TABLE metrics ADD CONSTRAINT unique_interview_metric UNIQUE (interview_id, metric_name); 
+            END IF; 
+        END $$;
+    `);
 
-    // Save transcript if provided
-    if (analysis.transcript) {
-        await db.query('DELETE FROM transcript_segments WHERE interview_id = $1', [interviewId]);
-        const rawText = analysis.transcript.map((t) => t.text).join(' ');
-        await db.query(
-            'INSERT INTO transcripts (interview_id, raw_text) VALUES ($1, $2) ON CONFLICT (interview_id) DO UPDATE SET raw_text = EXCLUDED.raw_text',
-            [interviewId, rawText]
-        );
+    // START TRANSACTION
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
 
-        for (let i = 0; i < analysis.transcript.length; i++) {
-            const t = analysis.transcript[i];
-            await db.query(
-                'INSERT INTO transcript_segments (interview_id, segment_order, speaker, text, start_ms, end_ms) VALUES ($1,$2,$3,$4,$5,$6)',
-                [interviewId, i + 1, t.speaker, t.text, t.start_ms, t.end_ms]
+        // 1. Save transcript if provided
+        if (analysis.transcript) {
+            await client.query('DELETE FROM transcript_segments WHERE interview_id = $1', [interviewId]);
+            const rawText = analysis.transcript.map((t) => t.text).join(' ');
+            await client.query(
+                'INSERT INTO transcripts (interview_id, raw_text) VALUES ($1, $2) ON CONFLICT (interview_id) DO UPDATE SET raw_text = EXCLUDED.raw_text',
+                [interviewId, rawText]
             );
-        }
-    }
 
-    // Save metrics
-    for (const [metricName, data] of Object.entries(analysis.metrics || {})) {
-        const metric = await db.query(
-            `INSERT INTO metrics (interview_id, metric_name, score, explanation_summary)
-             VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id`,
-            [interviewId, metricName, data.score, data.explanation]
-        );
-        const metricId = metric.rows[0]?.id;
-        if (metricId && data.examples) {
-            for (const ex of data.examples) {
-                await db.query(
-                    'INSERT INTO metric_examples (metric_id, label, comment) VALUES ($1,$2,$3)',
-                    [metricId, ex.label, ex.text]
+            for (let i = 0; i < analysis.transcript.length; i++) {
+                const t = analysis.transcript[i];
+                await client.query(
+                    'INSERT INTO transcript_segments (interview_id, segment_order, speaker, text, start_ms, end_ms) VALUES ($1,$2,$3,$4,$5,$6)',
+                    [interviewId, i + 1, t.speaker, t.text, t.start_ms, t.end_ms]
                 );
             }
         }
-    }
 
-    // Save patterns (upsert by title)
-    for (const p of analysis.patterns || []) {
-        await db.query(
-            `INSERT INTO patterns (user_id, pattern_type, title, description, severity, impact)
-             VALUES ($1,$2,$3,$4,$5,$6)
-             ON CONFLICT DO NOTHING`,
-            [userId, p.type, p.title, p.description, p.severity, p.impact]
-        );
-        await db.query(
-            `UPDATE patterns SET occurrence = occurrence + 1, updated_at = NOW()
-             WHERE user_id = $1 AND title = $2`,
-            [userId, p.title]
-        );
-    }
+        // 2. Save metrics
+        const metricsToSave = Object.entries(analysis.metrics || {});
+        console.log(`[AnalysisWorker] 📊 Attempting to save ${metricsToSave.length} metrics (Atomic Transaction)...`);
 
-    // Generate/update roadmap
-    let roadmapResult = await db.query('SELECT id FROM roadmaps WHERE user_id = $1', [userId]);
-    let roadmapId: string;
-    if (!roadmapResult.rows[0]) {
-        const r = await db.query('INSERT INTO roadmaps (user_id) VALUES ($1) RETURNING id', [userId]);
-        roadmapId = r.rows[0].id;
-    } else {
-        roadmapId = roadmapResult.rows[0].id;
-        await db.query('DELETE FROM roadmap_tasks WHERE roadmap_id = $1', [roadmapId]);
-    }
+        // First, clean up all existing examples for these metrics to avoid duplication
+        await client.query(`
+            DELETE FROM metric_examples 
+            WHERE metric_id IN (SELECT id FROM metrics WHERE interview_id = $1)
+        `, [interviewId]);
 
-    let orderIndex = 0;
-    for (const week of analysis.roadmap || []) {
-        for (const task of week.tasks || []) {
-            await db.query(
-                `INSERT INTO roadmap_tasks (roadmap_id, week_label, theme, task_text, order_index)
-                 VALUES ($1,$2,$3,$4,$5)`,
-                [roadmapId, week.week_label, week.theme, task, orderIndex++]
+        for (const [metricName, data] of metricsToSave) {
+            const metric = await client.query(
+                `INSERT INTO metrics (interview_id, metric_name, score, explanation_summary)
+                 VALUES ($1,$2,$3,$4) 
+                 ON CONFLICT (interview_id, metric_name) 
+                 DO UPDATE SET score = EXCLUDED.score, explanation_summary = EXCLUDED.explanation_summary
+                 RETURNING id`,
+                [interviewId, metricName, data.score, data.explanation]
             );
+            const metricId = metric.rows[0]?.id;
+
+            if (metricId && data.examples) {
+                for (const ex of data.examples) {
+                    await client.query(
+                        'INSERT INTO metric_examples (metric_id, label, comment, question_text) VALUES ($1,$2,$3,$4)',
+                        [metricId, ex.label, ex.text, ex.question_text || null]
+                    );
+                }
+            }
         }
+
+        // 3. Generate/update roadmap
+        let roadmapResult = await client.query('SELECT id FROM roadmaps WHERE user_id = $1', [userId]);
+        let roadmapId: string;
+        if (!roadmapResult.rows[0]) {
+            const r = await client.query('INSERT INTO roadmaps (user_id) VALUES ($1) RETURNING id', [userId]);
+            roadmapId = r.rows[0].id;
+        } else {
+            roadmapId = roadmapResult.rows[0].id;
+            await client.query('DELETE FROM roadmap_tasks WHERE roadmap_id = $1', [roadmapId]);
+        }
+
+        let orderIndex = 0;
+        for (const week of analysis.roadmap || []) {
+            for (const task of week.tasks || []) {
+                await client.query(
+                    `INSERT INTO roadmap_tasks (roadmap_id, week_label, theme, task_text, order_index)
+                     VALUES ($1,$2,$3,$4,$5)`,
+                    [roadmapId, week.week_label, week.theme, task, orderIndex++]
+                );
+            }
+        }
+
+        // 4. CRITICAL: Update overall score + status to 'ANALYZED' ONLY AT THE END
+        await client.query(
+            'UPDATE interviews SET overall_score=$1, summary_text=$2, badge_label=$3, vocal_signals=$4, status=$5, top_strengths=$6, key_improvement_areas=$7, analysis_completed_at=NOW() WHERE id=$8',
+            [
+                analysis.overall_score,
+                analysis.summary,
+                analysis.badge,
+                JSON.stringify(analysis.vocal_signals || null),
+                'ANALYZED',
+                JSON.stringify(analysis.top_strengths || []),
+                JSON.stringify(analysis.key_improvement_areas || []),
+                interviewId,
+            ]
+        );
+
+        await client.query('COMMIT');
+        console.log(`[AnalysisWorker] 💎 Transaction committed. Database is now consistent.`);
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[AnalysisWorker] ❌ Transaction rolled back due to error:', err);
+        throw err;
+    } finally {
+        client.release();
     }
 }
 
@@ -129,7 +158,10 @@ export async function handleAudioAnalysis(job: Job<AnalyzeJobPayload>): Promise<
     console.log(`[AnalysisWorker] Processing audio analysis for interview ${interviewId}`);
 
     try {
-        await db.query("UPDATE interviews SET status = 'ANALYZING' WHERE id = $1", [interviewId]);
+        await db.query(`ALTER TABLE interviews ADD COLUMN IF NOT EXISTS analysis_started_at TIMESTAMPTZ;`);
+        await db.query(`ALTER TABLE interviews ADD COLUMN IF NOT EXISTS analysis_completed_at TIMESTAMPTZ;`);
+        
+        await db.query("UPDATE interviews SET status = 'ANALYZING', analysis_started_at = NOW() WHERE id = $1", [interviewId]);
 
         // Fetch interview + media path
         const interviewResult = await db.query('SELECT * FROM interviews WHERE id = $1', [interviewId]);
@@ -158,15 +190,14 @@ export async function handleAudioAnalysis(job: Job<AnalyzeJobPayload>): Promise<
     const aiServiceUrl = config.aiService.url;
     console.log(`[AnalysisWorker] Calling AI service at ${aiServiceUrl}/analyze`);
 
-    // Node 18+ native fetch has a hardcoded 5-minute headers timeout (UND_ERR_HEADERS_TIMEOUT).
-    // To bypass it, we must explicitly use the fetch method from the undici package and pass a custom dispatcher.
+    // Node 18+ native fetch has a hardcoded headers timeout (UND_ERR_HEADERS_TIMEOUT).
+    // We set timeouts to 0 (unlimited) because the AI pipeline (transcription + LLM scoring)
+    // can take 3-5 minutes before returning the first response byte.
     const { fetch: undiciFetch, Agent } = require('undici');
     const customDispatcher = new Agent({ 
-      headersTimeout: 20 * 60 * 1000,  // 20 minutes
-      bodyTimeout: 20 * 60 * 1000,     // 20 minutes
-      connectTimeout: 60 * 1000,       // 1 minute to establish connection
-      keepAliveTimeout: 60 * 1000,     // Keep connection alive
-      keepAliveMaxTimeout: 20 * 60 * 1000,
+      headersTimeout: 0,   // unlimited – wait as long as needed
+      bodyTimeout: 0,      // unlimited
+      connectTimeout: 30 * 1000,  // 30s to establish initial connection
     });
 
     console.log(`[AnalysisWorker] Sending audio URL: ${audioUrl.substring(0, 50)}...`);
@@ -241,22 +272,23 @@ export async function handleReconstructionAnalysis(job: Job<ReconstructionAnalyz
         );
         const metadata = profileResult.rows[0] || {};
 
-        // Format Q&A as text
-        const qaBlock = questionsResult.rows
-            .map(
-                (q: any, i: number) =>
-                    `Q${i + 1}: ${q.question_text}\nA${i + 1}: ${q.answer_text || '(no answer provided)'}\nFollow-ups: ${q.followup_text || 'N/A'}\nSelf-confidence: ${q.confidence_score ?? 'N/A'}/10`
-            )
-            .join('\n\n');
+        // Format QA pairs for AI service
+        const qaPairs = questionsResult.rows.map((q: any) => ({
+            question_number: q.question_order,
+            question: q.question_text,
+            answer: q.answer_text,
+            follow_ups: q.followup_text ? [q.followup_text] : [],
+            follow_up_answers: [],
+        }));
 
-        // Call Python AI service for text-only analysis
+        // Call Python AI service for structured reconstruction
         const aiServiceUrl = config.aiService.url;
-        const response = await fetch(`${aiServiceUrl}/analyze-text`, {
+        const response = await fetch(`${aiServiceUrl}/analyze-reconstruction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                text: qaBlock,
-                analysis_type: 'reconstruction',
+                interview_id: interviewId,
+                qa_pairs: qaPairs,
                 metadata: {
                     current_role: metadata.current_role || '',
                     target_level: metadata.target_level || '',

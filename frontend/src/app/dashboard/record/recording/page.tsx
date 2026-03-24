@@ -55,91 +55,109 @@ function RecordingContent() {
     };
 
     return (
-        <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
+        <div className="min-h-screen bg-[#FDFCFB] dark:bg-[#0B1221] flex flex-col items-center justify-center px-6 font-sans selection:bg-brand-purple/30 relative overflow-hidden transition-colors duration-500">
+            {/* Background Glows */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-purple/5 blur-[120px] rounded-full pointer-events-none animate-pulse" />
+            
             {/* Interview badge */}
-            <div className="inline-flex items-center gap-2 bg-gray-100 rounded-full px-4 py-1.5 mb-8">
-                <span className="text-sm text-gray-600">{interviewName}</span>
-                <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">{round.replace(/_/g, ' ')} Round</span>
+            <div className="z-10 inline-flex items-center gap-3 bg-white dark:bg-white/5 backdrop-blur-md rounded-2xl px-6 py-2.5 mb-16 border border-gray-100 dark:border-white/10 shadow-sm animate-in fade-in slide-in-from-top-4 duration-700">
+                <div className="w-2 h-2 rounded-full bg-brand-purple shadow-sm animate-pulse" />
+                <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-[0.2em]">{interviewName}</span>
+                <div className="w-1 h-1 rounded-full bg-gray-200 dark:bg-white/10" />
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">{round.replace(/_/g, ' ')} Session</span>
             </div>
 
             {/* Timer */}
-            <div className="text-8xl font-black text-gray-900 tabular-nums tracking-tight mb-2">
+            <div className="z-10 text-[10rem] md:text-[12rem] font-bold text-gray-900 dark:text-white tabular-nums tracking-tighter mb-4 leading-none animate-in zoom-in duration-1000">
                 {formatTime(elapsed)}
             </div>
 
             {/* Status */}
-            <div className="flex items-center gap-2 mb-10">
+            <div className="z-10 flex items-center gap-3 mb-16 px-6 py-2 rounded-full glass-dark border border-white/5 transition-all duration-500">
                 {isPaused ? (
-                    <span className="text-sm text-yellow-600">⏸ Paused</span>
+                    <div className="flex items-center gap-2 text-[10px] font-black text-amber-500 uppercase tracking-[0.3em]">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                        </svg>
+                        Paused
+                    </div>
                 ) : (
-                    <>
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                        <span className="text-sm text-gray-500">Recording Audio</span>
-                    </>
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-brand-purple uppercase tracking-[0.3em]">
+                        <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shadow-sm" />
+                        Live Capturing
+                    </div>
                 )}
             </div>
 
             {/* Waveform visualization */}
-            <div className="flex items-end gap-1 h-20 mb-10">
+            <div className="z-10 flex items-end gap-1.5 h-32 mb-20 pointer-events-none">
                 {waveformData.map((value, i) => (
                     <div
                         key={i}
-                        className="w-1.5 bg-gray-400 rounded-full transition-all duration-75"
+                        className={`w-2 rounded-full transition-all duration-75 ${isPaused ? 'bg-gray-200 dark:bg-white/10' : 'bg-brand-purple opacity-40 shadow-sm'}`}
                         style={{
-                            height: `${Math.max(4, (value / 255) * 80)}px`,
-                            opacity: isPaused ? 0.3 : 0.5 + (value / 255) * 0.5,
+                            height: `${Math.max(8, (value / 255) * 120)}px`,
+                            opacity: isPaused ? 0.2 : 0.4 + (value / 255) * 0.6,
                         }}
                     />
                 ))}
             </div>
 
             {error && (
-                <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 mb-6 max-w-md text-center">
+                <div className="z-10 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-sm font-bold rounded-2xl px-6 py-4 mb-8 max-w-md text-center animate-in shake">
                     {error}
                 </div>
             )}
 
             {/* Controls */}
-            <div className="flex items-center gap-4">
+            <div className="z-10 flex items-center gap-6">
                 <button
                     onClick={isPaused ? resume : pause}
-                    className="inline-flex items-center gap-2 px-8 py-3 border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="group relative inline-flex items-center gap-3 px-10 py-5 glass-dark rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.2em] border border-white/10 hover:bg-white/10 transition-all active:scale-95 overflow-hidden"
                 >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/5 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
                     {isPaused ? (
                         <>
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 text-brand-purple" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M8 5v14l11-7z" />
                             </svg>
-                            Resume
+                            Resume Session
                         </>
                     ) : (
                         <>
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                             </svg>
-                            Pause
+                            Pause Buffer
                         </>
                     )}
                 </button>
 
                 <button
                     onClick={handleStopFinish}
-                    className="inline-flex items-center gap-2 px-8 py-3 bg-brand-700 text-white rounded-xl text-sm font-semibold hover:bg-brand-800 transition-colors"
+                    className="inline-flex items-center gap-3 px-12 py-5 bg-brand-purple text-white rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] shadow-lg shadow-brand-purple/20 hover:brightness-110 active:scale-95 transition-all"
                 >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                         <rect x="6" y="6" width="12" height="12" rx="1" />
                     </svg>
-                    Stop & Finish
+                    Finalize Analysis
                 </button>
             </div>
 
             {/* Footer */}
-            <p className="text-xs text-gray-400 mt-8 flex items-center gap-1">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                </svg>
-                Your data is being captured and will be analyzed once you finish.
-            </p>
+            <div className="z-10 mt-16 flex flex-col items-center gap-4">
+                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-[0.3em] flex items-center gap-3 bg-white dark:bg-white/5 px-6 py-2 rounded-full border border-gray-100 dark:border-white/5 backdrop-blur-md">
+                    <svg className="w-4 h-4 text-brand-purple" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                    Autonomous End-to-End Encryption Enabled
+                </p>
+                <div className="flex gap-4 text-[9px] font-black text-gray-700 uppercase tracking-widest">
+                    <span>Low Latency Capture</span>
+                    <span>•</span>
+                    <span>Lossless Audio Encoding</span>
+                </div>
+            </div>
         </div>
     );
 }

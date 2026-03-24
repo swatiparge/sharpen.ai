@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "Interview Prep Generator": {
+      "source": "paramchoudhary/resumeskills",
+      "sourceType": "github",
+      "computedHash": "f016f936074c5e2e22512a8b8b7afa32e904995f6b5f8e2df440ed9ee11abeb6"
+    },
     "senior-fullstack": {
       "source": "sickn33/antigravity-awesome-skills",
       "sourceType": "github",

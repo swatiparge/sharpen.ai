@@ -1,77 +1,112 @@
-# pipeline/transcriber.py
-
+import hashlib
+import urllib.request
 import assemblyai as aai
 import os
 import json
 from models.transcript import SpeakerTurn, Transcript
 
 
+def _get_content_hash_and_save(url: str, temp_path: str) -> str:
+    """Download and hash the audio content, and save to a temporary file."""
+    print(f"[Cache] Downloading and hashing audio...")
+    try:
+        # Download the file strings to hash it and save to temp_path
+        with urllib.request.urlopen(url, timeout=30) as response:
+            sha256_hash = hashlib.sha256()
+            with open(temp_path, "wb") as f:
+                while True:
+                    chunk = response.read(65536)
+                    if not chunk:
+                        break
+                    sha256_hash.update(chunk)
+                    f.write(chunk)
+        
+        digest = sha256_hash.hexdigest()
+        print(f"[Cache] Content hash: {digest[:12]}...")
+        return digest
+    except Exception as e:
+        print(f"[Cache] Warning: Failed to download/hash: {e}.")
+        return ""
+
+
 def transcribe_and_diarize(audio_url: str, session_id: str) -> Transcript:
     """
     Single API call to AssemblyAI.
-    Returns transcript with speaker labels already assigned.
-    AssemblyAI handles both transcription AND diarization together.
-
-    Speaker labels returned: "A", "B" etc.
-    We rename: most-speaking speaker = CANDIDATE, other = INTERVIEWER
-
-    Args:
-        audio_url: Public URL or presigned S3 URL to the audio file
-        session_id: Unique session identifier
-
-    Returns:
-        Transcript with labeled speaker turns
+    Uses persistent content-based caching to save credits.
     """
-    cache_path = f"/tmp/transcript_cache_{session_id}.json"
+    # 1. Setup paths
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cache_dir = os.path.join(project_root, "cache")
+    temp_dir = os.path.join(project_root, "uploads")
+    os.makedirs(cache_dir, exist_ok=True)
+    os.makedirs(temp_dir, exist_ok=True)
+
+    temp_audio_path = os.path.join(temp_dir, f"temp_{session_id}.audio")
+
+    # 2. Download, Hash, and Check Cache
+    content_hash = _get_content_hash_and_save(audio_url, temp_audio_path)
     
-    # Check if we already transcribed this session
+    if content_hash:
+        cache_path = os.path.join(cache_dir, f"content_{content_hash}.json")
+    else:
+        cache_path = os.path.join(cache_dir, f"transcript_{session_id}.json")
+    
     if os.path.exists(cache_path):
-        print(f"[AssemblyAI] ⚡ Found cached transcript for {session_id}, loading from disk to save credits and time!")
+        print(f"[AssemblyAI] ⚡ Found cached transcript, loading from disk!")
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path) # cleanup
         try:
             with open(cache_path, "r") as f:
                 data = json.load(f)
-            
-            # Reconstruct Pydantic objects
-            turns = [SpeakerTurn(**t) for t in data.get("turns", [])]
             return Transcript(
-                session_id=data.get("session_id", session_id),
-                turns=turns,
+                session_id=session_id,
+                audio_hash=content_hash,
+                turns=[SpeakerTurn(**t) for t in data.get("turns", [])],
                 candidate_text_only=data.get("candidate_text_only", "")
             )
         except Exception as e:
             print(f"[AssemblyAI] Failed to load cache: {e}. Re-transcribing...")
-    api_key = os.environ.get("ASSEMBLYAI_API_KEY", "")
+
+    # 3. Transcribe if no cache
+    api_key = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("ASSEMBLYAI_API_KEY not set in environment")
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
+        raise RuntimeError("ASSEMBLYAI_API_KEY not set in environment or is empty")
 
     aai.settings.api_key = api_key
-
-    print(f"[AssemblyAI] Starting transcription with speaker diarization...")
+    print(f"[AssemblyAI] Using API Key: {api_key[:5]}...{api_key[-5:]}")
 
     transcriber = aai.Transcriber()
+    
+    # Upload the LOCAL file instead of passing the URL
+    # This avoids "GetObject: Authentication error" from S3/Supabase
+    print(f"[AssemblyAI] Uploading local file to AAI...")
+    upload_url = transcriber.upload_file(temp_audio_path)
+    print(f"[AssemblyAI] Starting transcription for uploaded file...")
 
     transcript = transcriber.transcribe(
-        audio_url,
+        upload_url,
         config=aai.TranscriptionConfig(
-            speaker_labels=True,     # enables diarization
-            speakers_expected=2,    # interviewer + candidate
+            speaker_labels=True,
+            speakers_expected=2,
             speech_models=["universal-3-pro", "universal-2"],
             language_code="en"
         )
     )
 
     if transcript.status == aai.TranscriptStatus.error:
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
         raise RuntimeError(f"AssemblyAI transcription failed: {transcript.error}")
 
-    # Build speaker turns from utterances
+    # Build transcript object
     raw_turns = []
     speaker_time = {}
-
     for utterance in transcript.utterances:
-        spk = utterance.speaker  # "A" or "B"
-        duration = (utterance.end - utterance.start) / 1000  # ms to seconds
+        spk = utterance.speaker
+        duration = (utterance.end - utterance.start) / 1000
         speaker_time[spk] = speaker_time.get(spk, 0) + duration
-
         raw_turns.append({
             "speaker": spk,
             "start_time": utterance.start / 1000,
@@ -79,14 +114,9 @@ def transcribe_and_diarize(audio_url: str, session_id: str) -> Transcript:
             "text": utterance.text
         })
 
-    # Most-speaking speaker = CANDIDATE
-    # In technical interviews, candidate speaks ~65% of the time
     candidate_speaker = max(speaker_time, key=speaker_time.get) if speaker_time else "A"
-
-    # Rename speakers
     labeled_turns = []
     candidate_texts = []
-
     for turn in raw_turns:
         label = "CANDIDATE" if turn["speaker"] == candidate_speaker else "INTERVIEWER"
         labeled_turns.append(SpeakerTurn(
@@ -98,21 +128,27 @@ def transcribe_and_diarize(audio_url: str, session_id: str) -> Transcript:
         if label == "CANDIDATE":
             candidate_texts.append(turn["text"])
 
-    print(f"[AssemblyAI] ✅ Transcription complete: {len(labeled_turns)} utterances, "
-          f"{len(set(t['speaker'] for t in raw_turns))} speakers detected")
-
     transcript_obj = Transcript(
         session_id=session_id,
+        audio_hash=content_hash,
         turns=labeled_turns,
         candidate_text_only=" ".join(candidate_texts)
     )
 
-    # Save to cache so future retries don't incur credits
+    # 4. Save to Cache and Cleanup
     try:
         with open(cache_path, "w") as f:
             json.dump(transcript_obj.dict(), f)
-        print(f"[AssemblyAI] Saved transcript locally to {cache_path}")
+        print(f"[AssemblyAI] Saved transcript to cache: {os.path.basename(cache_path)}")
+        
+        if content_hash:
+            session_link = os.path.join(cache_dir, f"transcript_{session_id}.json")
+            with open(session_link, "w") as f:
+                json.dump(transcript_obj.dict(), f)
     except Exception as e:
         print(f"[AssemblyAI] Failed to save cache: {e}")
+    finally:
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
 
     return transcript_obj

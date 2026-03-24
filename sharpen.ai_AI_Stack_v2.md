@@ -1,4 +1,4 @@
-# InterviewOS — AI Stack Reference Guide v2
+# sharpen.ai — AI Stack Reference Guide v2
 > For AI coding agents. Read this entire file before writing any code.
 > Two APIs. Two keys. Everything covered.
 
@@ -829,7 +829,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="InterviewOS API", version="1.0.0")
+app = FastAPI(title="sharpen.ai API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -1040,4 +1040,4 @@ At $29/month subscription, even 20 interviews/month costs you ~$5–7. **Margins
 
 ---
 
-*InterviewOS AI Stack v2 — AssemblyAI + NVIDIA NIM (Qwen 3.5) — Production Ready*
+*sharpen.ai AI Stack v2 — AssemblyAI + NVIDIA NIM (Qwen 3.5) — Production Ready*

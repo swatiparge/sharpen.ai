@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const config = {
-    appName: 'swadhyaya.ai',
+    appName: 'sharpen.ai',
     port: parseInt(process.env.PORT || '3000', 10),
     nodeEnv: process.env.NODE_ENV || 'development',
     databaseUrl: process.env.DATABASE_URL || '',
@@ -17,7 +17,7 @@ export const config = {
         region: process.env.AWS_REGION || 'us-east-1',
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-        bucketName: process.env.S3_BUCKET_NAME || 'interviewos-media',
+        bucketName: process.env.S3_BUCKET_NAME || 'sharpen-media',
         endpoint: process.env.S3_ENDPOINT, // optional, for R2
     },
     google: {

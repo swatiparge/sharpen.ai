@@ -1,4 +1,4 @@
-# InterviewOS AI Service — Python dependencies
+# sharpen.ai AI Service — Python dependencies
 
 assemblyai>=0.30.0
 openai>=1.30.0          # used to call NVIDIA NIM (OpenAI-compatible)

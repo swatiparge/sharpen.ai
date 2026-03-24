@@ -1,16 +1,16 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# \# InterviewOS – Web App Wireframes (Text-Only)
+# \# sharpen.ai – Web App Wireframes (Text-Only)
 
 
 ---
 
-## 1. Landing Page – “InterviewOS Home”
+## 1. Landing Page – “sharpen.ai Home”
 
 ### Layout
 
 - Header (top)
-    - Left: [Logo] InterviewOS
+    - Left: [Logo] sharpen.ai
     - Right: Links: How it works | Sample report | Login | [Button] Get started free
 - Hero section (split left/right)
     - Left:
@@ -53,7 +53,7 @@
 ### 2.2 Sign Up Page
 
 - Centered card:
-    - Title: “Create your InterviewOS account”
+    - Title: “Create your sharpen.ai account”
     - [Input] Full name
     - [Input] Email
     - [Input] Password
@@ -90,7 +90,7 @@
 
 ### 3.3 Consent \& Explanation
 
-- Page title: “How InterviewOS works”
+- Page title: “How sharpen.ai works”
 - Content box:
     - Bullet list:
         - “We record or reconstruct your interviews.”
@@ -111,7 +111,7 @@
 - 3 cards in a row (or stacked on mobile):
     - Card 1:
         - Title: “Record a yourself”
-        - Description: “Use InterviewOS during your next live interview.”
+        - Description: “Use sharpen.ai during your next live interview.”
         - [Button] Set up recording
     - Card 2:
         - Title: “Reconstruct a past interview”
@@ -305,7 +305,7 @@
 
 ---
 
-## 10. Dashboard – “My InterviewOS”
+## 10. Dashboard – “My sharpen.ai”
 
 ### 10.1 Main Dashboard
 
@@ -411,18 +411,18 @@
 design like a wireframe screen. screen 1 WF-01 like in this format
 
 ```markdown
-# InterviewOS – Web App Wireframes (Screen-by-Screen)
+# sharpen.ai – Web App Wireframes (Screen-by-Screen)
 
 ---
 
-## WF-01 – Landing Page “InterviewOS Home”
+## WF-01 – Landing Page “sharpen.ai Home”
 
 **Purpose:** Explain value and drive signups.
 
 **Layout**
 
 - Header (top)
-  - Left: [Logo] InterviewOS
+  - Left: [Logo] sharpen.ai
   - Right: Navigation
     - Link: How it works
     - Link: Sample report
@@ -483,7 +483,7 @@ design like a wireframe screen. screen 1 WF-01 like in this format
 **Purpose:** Create a new account.
 
 - Centered card
-  - Title: “Create your InterviewOS account”
+  - Title: “Create your sharpen.ai account”
   - [Input] Full name
   - [Input] Email
   - [Input] Password
@@ -531,7 +531,7 @@ design like a wireframe screen. screen 1 WF-01 like in this format
 
 **Purpose:** Explain analysis and get consent.
 
-- Page title: “How InterviewOS works”
+- Page title: “How sharpen.ai works”
 - Content box
   - Bulleted list:
     - “We record or reconstruct your interviews.”
@@ -554,7 +554,7 @@ design like a wireframe screen. screen 1 WF-01 like in this format
 
   - Card 1 – Record a real interview
     - Title: “Record a real interview”
-    - Description: “Use InterviewOS during your next live interview.”
+    - Description: “Use sharpen.ai during your next live interview.”
     - [Primary Button] Set up recording
 
   - Card 2 – Reconstruct a past interview
@@ -805,7 +805,7 @@ design like a wireframe screen. screen 1 WF-01 like in this format
 
 ---
 
-## WF-19 – Dashboard “My InterviewOS”
+## WF-19 – Dashboard “My sharpen.ai”
 
 **Purpose:** Home screen for returning users.
 

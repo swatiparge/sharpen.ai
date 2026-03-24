@@ -60,114 +60,120 @@ export default function OnboardingStep2() {
     };
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm p-8">
-            {/* Step header */}
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-blue-500 uppercase tracking-wider">Onboarding Flow</span>
-                <span className="text-xs font-semibold text-gray-400">Step 2 of 3</span>
-            </div>
-
-            {/* Progress bar */}
-            <div className="w-full h-1.5 bg-gray-100 rounded-full mb-8 overflow-hidden">
-                <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: '66%' }} />
-            </div>
-
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">What are your target roles?</h1>
-            <p className="text-sm text-gray-500 mb-8">
-                Help us tailor your interview prep by defining your goals.
-            </p>
-
-            {error && (
-                <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 mb-6">
-                    {error}
+        <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
+            <div className="mb-10 pl-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-purple/[0.08] border border-brand-purple/20 text-[10px] font-bold text-brand-purple uppercase tracking-[0.2em] mb-6">
+                    Step 02 / 03
                 </div>
-            )}
+                <h1 className="font-serif italic text-4xl font-bold text-gray-900 dark:text-white mb-3 tracking-tight">Mission Objectives</h1>
+                <p className="text-gray-500 dark:text-gray-400 font-medium leading-relaxed">
+                    Define your destination. We&apos;ll build the roadmap to get you there.
+                </p>
+            </div>
 
-            {/* Target Role */}
-            <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-900 mb-2">Target Role</label>
-                <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                        </svg>
+            <div className="bg-white dark:bg-[#0F172A]/40 backdrop-blur-xl rounded-[3rem] border border-gray-100 dark:border-white/5 p-10 md:p-12 shadow-soft space-y-10 relative overflow-hidden group transition-colors duration-500">
+                <div className="absolute top-0 left-0 w-full h-1 bg-brand-purple opacity-20" />
+                
+                <div className="relative z-10">
+                    {/* Progress bar */}
+                    <div className="w-full h-1.5 bg-gray-100 dark:bg-white/5 rounded-full mb-12 overflow-hidden shadow-inner translate-y-[-20px]">
+                        <div className="h-full bg-brand-purple rounded-full transition-all duration-1000 shadow-sm" style={{ width: '66.66%' }} />
                     </div>
-                    <select
-                        value={targetRole}
-                        onChange={(e) => setTargetRole(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M6%209l6%206%206-6%22/%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center]"
-                    >
-                        {TARGET_ROLES.map((r) => (
-                            <option key={r} value={r}>{r}</option>
-                        ))}
-                    </select>
-                </div>
-            </div>
 
-            {/* Target Companies */}
-            <div className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-semibold text-gray-900">Target Companies</label>
-                    <span className="text-xs text-gray-400">Optional</span>
-                </div>
-                <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                        </svg>
-                    </div>
-                    <input
-                        type="text"
-                        value={targetCompanies}
-                        onChange={(e) => setTargetCompanies(e.target.value)}
-                        placeholder="e.g., Company A, Company B"
-                        className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
-                    />
-                </div>
-                <p className="text-xs text-blue-400 mt-1">Separate multiple companies with commas.</p>
-            </div>
-
-            {/* Interview Stage */}
-            <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-900 mb-2">Interview Stage</label>
-                <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
-                    <select
-                        value={interviewStage}
-                        onChange={(e) => setInterviewStage(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M6%209l6%206%206-6%22/%3E%3C/svg%3E')] bg-no-repeat bg-[right_12px_center]"
-                    >
-                        <option value="">Select current stage</option>
-                        {INTERVIEW_STAGES.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100">
-                <button
-                    onClick={() => router.push('/onboarding/step-1')}
-                    className="inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                    <span>←</span> Back
-                </button>
-                <button
-                    onClick={handleNext}
-                    disabled={saving}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-700 text-white font-semibold text-sm rounded-lg hover:bg-brand-800 disabled:opacity-60 transition-colors"
-                >
-                    {saving ? (
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                        <>Next <span>→</span></>
+                    {error && (
+                        <div className="bg-rose-500/5 border border-rose-500/10 text-rose-500 text-sm font-bold rounded-2xl px-6 py-4 mb-8 animate-in shake">
+                            {error}
+                        </div>
                     )}
-                </button>
+
+                    <div className="space-y-8">
+                        {/* Target Role */}
+                        <div className="group/field">
+                            <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-3 ml-1 group-focus-within/field:text-brand-purple transition-colors">Target Appointment</label>
+                            <div className="relative">
+                                <select
+                                    value={targetRole}
+                                    onChange={(e) => setTargetRole(e.target.value)}
+                                    className="w-full bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/10 rounded-2xl px-5 py-4 text-gray-900 dark:text-white font-bold focus:outline-none focus:border-brand-purple/50 focus:ring-4 focus:ring-brand-purple/5 transition-all appearance-none cursor-pointer"
+                                >
+                                    {TARGET_ROLES.map((r) => (
+                                        <option key={r} value={r} className="bg-white dark:bg-[#0B1221]">{r}</option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-600">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Target Companies */}
+                        <div className="group/field">
+                            <div className="flex items-center justify-between mb-3 ml-1">
+                                <label className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] group-focus-within/field:text-brand-purple transition-colors">Dream Organizations</label>
+                                <span className="text-[9px] font-bold text-gray-300 dark:text-gray-700 uppercase tracking-widest italic lowercase">Comma Separated</span>
+                            </div>
+                            <input
+                                type="text"
+                                value={targetCompanies}
+                                onChange={(e) => setTargetCompanies(e.target.value)}
+                                placeholder="e.g. Google, Anthropic, Scale AI"
+                                className="w-full bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/10 rounded-2xl px-6 py-4 text-gray-900 dark:text-white font-bold focus:outline-none focus:border-brand-purple/50 focus:ring-4 focus:ring-brand-purple/5 transition-all placeholder:text-gray-300 dark:placeholder:text-gray-700"
+                            />
+                        </div>
+
+                        {/* Interview Stage */}
+                        <div className="group/field">
+                            <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-3 ml-1 group-focus-within/field:text-brand-purple transition-colors">Current Status</label>
+                            <div className="relative">
+                                <select
+                                    value={interviewStage}
+                                    onChange={(e) => setInterviewStage(e.target.value)}
+                                    className="w-full bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/10 rounded-2xl px-5 py-4 text-gray-900 dark:text-white font-bold focus:outline-none focus:border-brand-purple/50 focus:ring-4 focus:ring-brand-purple/5 transition-all appearance-none cursor-pointer"
+                                >
+                                    <option value="" className="bg-white dark:bg-[#0B1221] text-gray-400">Select your progress</option>
+                                    {INTERVIEW_STAGES.map((s) => (
+                                        <option key={s} value={s} className="bg-white dark:bg-[#0B1221]">{s}</option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 dark:text-gray-600">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-between mt-12 pt-8 border-t border-gray-100 dark:border-white/5">
+                        <button
+                            onClick={() => router.push('/onboarding/step-1')}
+                            className="inline-flex items-center gap-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] hover:text-gray-900 dark:hover:text-white transition-colors group/back"
+                        >
+                            <svg className="w-4 h-4 transition-transform group-hover/back:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                            </svg> Back
+                        </button>
+                        <button
+                            onClick={handleNext}
+                            disabled={saving}
+                            className="inline-flex items-center gap-3 px-10 py-4 bg-brand-purple text-white font-bold text-xs uppercase tracking-[0.2em] rounded-2xl hover:brightness-110 active:scale-95 transition-all shadow-sm disabled:opacity-40"
+                        >
+                            {saving ? (
+                                <div className="w-5 h-5 border-3 border-white/20 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <>
+                                    Proceed to final phase 
+                                    <svg className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                                    </svg>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );

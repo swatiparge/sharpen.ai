@@ -7,17 +7,20 @@ const getPoolConfig = (): PoolConfig => {
     return {
         connectionString: config.databaseUrl,
         ssl: { rejectUnauthorized: false },
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000, // Increased timeout
+        max: 10,
+        idleTimeoutMillis: 60000,        // 60s before an idle client is closed
+        connectionTimeoutMillis: 10000,  // 10s to get a connection from pool
+        keepAlive: true,                 // Send TCP keepalives to prevent Supabase timeout
+        keepAliveInitialDelayMillis: 10000,
     };
 };
 
 export const db = new Pool(getPoolConfig());
 
-db.on('error', (err) => {
-    console.error('Unexpected error on idle client', err);
-    process.exit(-1);
+db.on('error', (err: Error) => {
+    // Log the error but do NOT exit — a stale connection should not crash the server.
+    // pg-pool will automatically create a new connection on the next query.
+    console.error('[DB] Idle client error (non-fatal, pool will recover):', err.message);
 });
 
 export async function connectDB(): Promise<void> {

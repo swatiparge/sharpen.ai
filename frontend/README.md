@@ -1,4 +1,4 @@
-# swadhyaya.ai Frontend
+# sharpen.ai Frontend
 
 ## Setup
 

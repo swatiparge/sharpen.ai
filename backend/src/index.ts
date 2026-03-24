@@ -18,6 +18,8 @@ import roadmapRoutes from './routes/roadmap.routes';
 import simulationsRoutes from './routes/simulations.routes';
 import profileRoutes from './routes/profile.routes';
 import healthRoutes from './routes/health.routes';
+import usageRoutes from './routes/usage.routes';
+import learnRoutes from './routes/learn.routes';
 
 // Workers (only start if Redis is available)
 import { getRedis } from './config/redis';
@@ -37,7 +39,7 @@ app.use(morgan('dev'));
 
 // ── Health Check ────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'swadhyaya.ai API', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', service: 'sharpen.ai API', timestamp: new Date().toISOString() });
 });
 
 // ── TEMP: One-time migration (remove after use) ────────────
@@ -133,7 +135,9 @@ app.get('/test-insert', async (_req, res) => {
   app.use('/roadmap', roadmapRoutes);
   app.use('/simulations', simulationsRoutes);
   app.use('/profile', profileRoutes);
+  app.use('/learn', learnRoutes);
   app.use('/health', healthRoutes);
+  app.use('/usage', usageRoutes);
 
 // ── Error Handler ────────────────────────────────────────────
 app.use(errorMiddleware);
@@ -142,7 +146,7 @@ app.use(errorMiddleware);
 async function bootstrap() {
     await connectDB();
     app.listen(config.port, () => {
-        console.log(`\n🚀 swadhyaya.ai API running at http://localhost:${config.port}`);
+        console.log(`\n🚀 sharpen.ai API running at http://localhost:${config.port}`);
         console.log(`   Health: http://localhost:${config.port}/health`);
         console.log(`   Env:    ${config.nodeEnv}\n`);
     });

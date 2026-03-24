@@ -1,5 +1,5 @@
 -- ============================================================
--- InterviewOS – Full Database Schema
+-- sharpen.ai – Full Database Schema
 -- ============================================================
 
 -- Extensions

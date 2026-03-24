@@ -32,8 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         // Hydrate from localStorage
-        const savedToken = localStorage.getItem('swadhyaya_token');
-        const savedUser = localStorage.getItem('swadhyaya_user');
+        const savedToken = localStorage.getItem('sharpen_token');
+        const savedUser = localStorage.getItem('sharpen_user');
         if (savedToken && savedUser) {
             setToken(savedToken);
             setUser(JSON.parse(savedUser));
@@ -44,15 +44,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const login = (user: User, token: string) => {
         setUser(user);
         setToken(token);
-        localStorage.setItem('swadhyaya_token', token);
-        localStorage.setItem('swadhyaya_user', JSON.stringify(user));
+        localStorage.setItem('sharpen_token', token);
+        localStorage.setItem('sharpen_user', JSON.stringify(user));
     };
 
     const logout = () => {
         setUser(null);
         setToken(null);
-        localStorage.removeItem('swadhyaya_token');
-        localStorage.removeItem('swadhyaya_user');
+        localStorage.removeItem('sharpen_token');
+        localStorage.removeItem('sharpen_user');
     };
 
     return (

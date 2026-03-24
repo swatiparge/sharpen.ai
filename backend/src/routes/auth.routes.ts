@@ -64,6 +64,9 @@ router.post('/google', validate(googleAuthSchema), async (req: Request, res: Res
             expiresIn: config.jwt.expiresIn as any,
         });
 
+        // Update last login
+        await db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+
         return res.json({
             user: {
                 id: user.id,
@@ -94,6 +97,10 @@ router.post('/signup', validate(signupSchema), async (req: Request, res: Respons
             [email, password_hash, full_name]
         );
         const user = result.rows[0];
+
+        // Update last login
+        await db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+
         const token = jwt.sign({ userId: user.id }, config.jwt.secret, {
             expiresIn: config.jwt.expiresIn as any,
         });
@@ -118,6 +125,10 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
         const token = jwt.sign({ userId: user.id }, config.jwt.secret, {
             expiresIn: config.jwt.expiresIn as any,
         });
+
+        // Update last login
+        await db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+
         return res.json({
             user: { id: user.id, email: user.email, full_name: user.full_name },
             token,

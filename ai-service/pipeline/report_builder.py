@@ -2,12 +2,14 @@
 
 import os
 import json
-from openai import OpenAI
+from openai import OpenAI, APIError
+from pipeline.utils import retry_llm_call
+
 from models.report import InterviewReport, AnswerAnalysis
 
 # NVIDIA NIM uses OpenAI-compatible API
 nvidia_client = None
-NVIDIA_MODEL = "qwen/qwen2.5-72b-instruct"
+NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"
 
 
 def _get_client() -> OpenAI:
@@ -33,7 +35,7 @@ def build_report(session: dict, analyses: list[AnswerAnalysis]) -> InterviewRepo
 
     for analysis in analyses:
         for metric in analysis.metrics:
-            if metric.score is not None:
+            if metric.is_relevant and metric.score is not None:
                 mid = metric.metric_id
                 metric_totals[mid] = metric_totals.get(mid, 0) + metric.score
                 metric_counts[mid] = metric_counts.get(mid, 0) + 1
@@ -50,12 +52,20 @@ def build_report(session: dict, analyses: list[AnswerAnalysis]) -> InterviewRepo
     weakest  = [m[0] for m in sorted_metrics[:3]]
     strongest = [m[0] for m in sorted_metrics[-3:]]
 
-    # Generate level gap summary via LLM
-    level_gap = _generate_level_gap(
+    # Aggregate tokens from all answer analyses
+    total_prompt_tokens = sum(a.prompt_tokens for a in analyses)
+    total_completion_tokens = sum(a.completion_tokens for a in analyses)
+
+    # Generate structured summary, strengths, and weaknesses via LLM
+    structured_data, summary_usage = _generate_structured_summary(
         metric_averages,
         session.get("experience_level", ""),
         session.get("job_role", "")
     )
+    
+    # Add summary generation tokens
+    total_prompt_tokens += summary_usage.get("prompt_tokens", 0)
+    total_completion_tokens += summary_usage.get("completion_tokens", 0)
 
     return InterviewReport(
         session_id=session.get("session_id", ""),
@@ -69,18 +79,22 @@ def build_report(session: dict, analyses: list[AnswerAnalysis]) -> InterviewRepo
         recurring_weaknesses=weakest,
         strongest_areas=strongest,
         priority_improvements=weakest[:3],
-        level_gap_summary=level_gap
+        level_gap_summary=structured_data.get("summary", "Summary could not be generated."),
+        top_strengths=structured_data.get("top_strengths", []),
+        key_improvement_areas=structured_data.get("key_improvement_areas", []),
+        prompt_tokens=total_prompt_tokens,
+        completion_tokens=total_completion_tokens
     )
 
 
-def _generate_level_gap(
+def _generate_structured_summary(
     metric_averages: dict,
     experience_level: str,
     job_role: str
-) -> str:
-    """Generate a concise level gap summary using the LLM."""
+) -> tuple[dict, dict]:
+    """Generate a structured summary and return usage data."""
     if not metric_averages:
-        return "Insufficient data to generate level gap summary."
+        return {}, {}
 
     client = _get_client()
 
@@ -91,22 +105,46 @@ Based on these interview scores for a {experience_level} year {job_role}:
 
 {scores_text}
 
-Write a 2-3 sentence Level Gap Summary that:
-1. States what seniority level they are currently performing at
-2. States what level they need to reach
-3. Names the 2 specific signals they are missing
+Analyze the performance and return ONLY a valid JSON object matching this exact structure:
 
-Be direct and specific. No fluff. No bullet points. Plain sentences only.
+{{
+    "summary": "A 2-3 sentence Level Gap Summary. State what seniority level they are currently performing at, what level they need to reach, and name 2 specific signals they are missing. Be direct. No fluff. Plain sentences only.",
+    "top_strengths": [
+        {{ "title": "Strength 1 Name", "description": "1 sentence explaining why" }},
+        {{ "title": "Strength 2 Name", "description": "1 sentence explaining why" }},
+        {{ "title": "Strength 3 Name", "description": "1 sentence explaining why" }}
+    ],
+    "key_improvement_areas": [
+        {{ "title": "Weakness 1 Name", "description": "1 sentence explaining what to improve" }},
+        {{ "title": "Weakness 2 Name", "description": "1 sentence explaining what to improve" }}
+    ]
+}}
+
+Do perfectly formatted JSON. Do not use Markdown formatting code blocks. Simply output JSON.
 """
 
     try:
-        response = client.chat.completions.create(
-            model=NVIDIA_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=200
-        )
-        return response.choices[0].message.content.strip()
+        @retry_llm_call(max_retries=3)
+        def _call_llm():
+            return client.chat.completions.create(
+                model=NVIDIA_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,  # Strict determinism
+                max_tokens=600
+            )
+
+        response = _call_llm()
+        usage = getattr(response, 'usage', None)
+        usage_dict = {
+            "prompt_tokens": usage.prompt_tokens if usage else 0,
+            "completion_tokens": usage.completion_tokens if usage else 0
+        }
+        
+        content = response.choices[0].message.content.strip()
+        # Clean up potential markdown blocks the LLM might stubbornly include
+        content = content.replace("```json", "").replace("```", "").strip()
+        return json.loads(content), usage_dict
     except Exception as e:
-        print(f"[ReportBuilder] ⚠️ Level gap generation failed: {e}")
-        return "Level gap summary could not be generated."
+        print(f"[ReportBuilder] ⚠️ Structured summary generation failed: {e}")
+        return {}, {}
+
