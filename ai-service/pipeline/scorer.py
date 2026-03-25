@@ -79,9 +79,11 @@ STRICT RESPONSE RULES:
 1. is_relevant: true if the metric applies meaningfully, false if it's a stretch or irrelevant (always a boolean).
 2. Score: 1.0 to 10.0 if relevant. If is_relevant is false, score MUST be 0.0.
 3. 7.0 is "Solid" (Hirable), 8.5+ is "Exceptional" (Top 5% of candidates).
-4. evidence_quote: Copy a short EXACT verbatim quote from the candidate's answer that proves your score. If their answer was too short to quote, leave empty.
-5. rationale: CRITICAL INSTRUCTION - Do NOT just write "The candidate failed to X." If the score is low, you MUST provide a concrete contrasting example of what they SHOULD have said instead, directly related to their specific answer. (e.g. "Instead of just saying 'State manages data', you should have said 'State is immutable data that triggers a UI re-render when updated via setState'").
-6. what_went_wrong: Be direct and specific about the exact technical or behavioral misstep.
+4. evidence_quote: Copy a short EXACT verbatim quote from the candidate's answer that proves your score for THIS SPECIFIC METRIC.
+5. rationale: CRITICAL INSTRUCTION - You MUST provide a concrete contrasting example of what they SHOULD have said instead, directly related to their specific answer. 
+   - FORMAT: "Instead of just saying '[vague part of their answer]', you should have said '[concrete senior-level alternative]'".
+   - DO NOT repeat the same rationale or quote across different metrics. If you use a quote for 'Technical Depth', find a DIFFERENT quote or a different angle for 'Communication Clarity'. Redundancy is a failure.
+6. what_went_wrong: Be direct and specific about the exact technical or behavioral misstep for this metric.
 7. tips: Provide exactly 2 concise, actionable tips.
 
 Return ONLY a valid JSON object. No markdown. No explanation.
@@ -98,13 +100,13 @@ JSON format:
       "is_relevant": true,
       "score": 7.5,
       "label": "Solid",
-      "evidence_quote": "exact verbatim quote",
-      "rationale": "Concrete contrasting example of what to say instead, or why the quote was strong.",
-      "what_went_wrong": "specific issue",
+      "evidence_quote": "exact verbatim quote uniquely proving clarity issue/success",
+      "rationale": "Instead of [X], you should have [Y] to improve clarity...",
+      "what_went_wrong": "specific clarity issue",
       "tips": ["Tip 1", "Tip 2"]
     }},
     {{ "metric_id": "structural_thinking", "metric_name": "...", "is_relevant": false, "score": 0.0, ... }},
-    "... (Repeat for all 8 metrics)"
+    "... (Repeat for all 8 metrics with UNIQUE quotes and rationales for each)"
   ]
 }}
 """

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { GoogleOAuthProvider, GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '@/lib/auth';
 import { googleAuth } from '@/lib/api';
@@ -105,9 +106,9 @@ function LoginCard() {
                 <div className="mt-12 flex flex-col items-center gap-6 text-[10px] font-bold uppercase tracking-[0.3em]">
                     <p className="text-gray-400 dark:text-gray-600">Protected by <span className="text-gray-600 dark:text-gray-400">Google Cloud Platform</span></p>
                     <div className="flex gap-8">
-                        <a href="#" className="text-gray-400 hover:text-brand-purple transition-colors">Privacy</a>
-                        <a href="#" className="text-gray-400 hover:text-brand-purple transition-colors">Terms</a>
-                        <a href="#" className="text-gray-400 hover:text-brand-purple transition-colors">Help</a>
+                        <Link href="/privacy" className="text-gray-400 hover:text-brand-purple transition-colors">Privacy</Link>
+                        <Link href="/terms" className="text-gray-400 hover:text-brand-purple transition-colors">Terms</Link>
+                        <a href={`mailto:legal@sharpen.ai`} className="text-gray-400 hover:text-brand-purple transition-colors">Help</a>
                     </div>
                 </div>
             </div>

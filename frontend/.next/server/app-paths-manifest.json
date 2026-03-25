@@ -1,8 +1,1 @@
-{
-  "/login/page": "app/login/page.js",
-  "/onboarding/step-1/page": "app/onboarding/step-1/page.js",
-  "/dashboard/reconstruct/page": "app/dashboard/reconstruct/page.js",
-  "/dashboard/prepare/learn/[topic]/page": "app/dashboard/prepare/learn/[topic]/page.js",
-  "/dashboard/prepare/learn/page": "app/dashboard/prepare/learn/page.js",
-  "/dashboard/interviews/[id]/metrics/[metricName]/page": "app/dashboard/interviews/[id]/metrics/[metricName]/page.js"
-}
+{}

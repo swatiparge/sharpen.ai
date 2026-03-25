@@ -109,10 +109,18 @@ def _format_analysis_result(report, analyses, transcript_output: list) -> Analyz
         else:
             explanation = f"Analysis based on {len(analyses)} answers."
 
+        # Deduplicate examples by text to be extra safe
+        unique_examples = []
+        seen_texts = set()
+        for ex in all_examples:
+            if ex["text"] not in seen_texts:
+                unique_examples.append(ex)
+                seen_texts.add(ex["text"])
+
         metrics_dict[metric_id] = {
             "score": avg_score,
             "explanation": explanation,
-            "examples": all_examples[:6],
+            "examples": unique_examples[:6],
         }
 
     return AnalyzeResponse(
