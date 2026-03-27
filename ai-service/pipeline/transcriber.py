@@ -6,26 +6,22 @@ import json
 from models.transcript import SpeakerTurn, Transcript
 
 
-def _get_content_hash_and_save(url: str, temp_path: str) -> str:
-    """Download and hash the audio content, and save to a temporary file."""
-    print(f"[Cache] Downloading and hashing audio...")
+def _get_content_hash_in_memory(url: str) -> str:
+    """Download and hash the audio content in memory without touching disk."""
+    print(f"[Cache] Downloading and hashing audio in memory...")
     try:
-        # Download the file strings to hash it and save to temp_path
         with urllib.request.urlopen(url, timeout=30) as response:
             sha256_hash = hashlib.sha256()
-            with open(temp_path, "wb") as f:
-                while True:
-                    chunk = response.read(65536)
-                    if not chunk:
-                        break
-                    sha256_hash.update(chunk)
-                    f.write(chunk)
-        
+            while True:
+                chunk = response.read(65536)
+                if not chunk:
+                    break
+                sha256_hash.update(chunk)
         digest = sha256_hash.hexdigest()
         print(f"[Cache] Content hash: {digest[:12]}...")
         return digest
     except Exception as e:
-        print(f"[Cache] Warning: Failed to download/hash: {e}.")
+        print(f"[Cache] Warning: Failed to stream/hash: {e}.")
         return ""
 
 
@@ -37,24 +33,19 @@ def transcribe_and_diarize(audio_url: str, session_id: str) -> Transcript:
     # 1. Setup paths
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     cache_dir = os.path.join(project_root, "cache")
-    temp_dir = os.path.join(project_root, "uploads")
     os.makedirs(cache_dir, exist_ok=True)
-    os.makedirs(temp_dir, exist_ok=True)
 
-    temp_audio_path = os.path.join(temp_dir, f"temp_{session_id}.audio")
-
-    # 2. Download, Hash, and Check Cache
-    content_hash = _get_content_hash_and_save(audio_url, temp_audio_path)
+    # 2. Hash in memory with model version for cache invalidation
+    content_hash = _get_content_hash_in_memory(audio_url)
+    TRANSCRIPTION_MODEL = os.environ.get("TRANSCRIPTION_MODEL", "universal-3-pro")
     
     if content_hash:
-        cache_path = os.path.join(cache_dir, f"content_{content_hash}.json")
+        cache_path = os.path.join(cache_dir, f"content_{TRANSCRIPTION_MODEL}_{content_hash}.json")
     else:
-        cache_path = os.path.join(cache_dir, f"transcript_{session_id}.json")
+        cache_path = os.path.join(cache_dir, f"transcript_{TRANSCRIPTION_MODEL}_{session_id}.json")
     
     if os.path.exists(cache_path):
         print(f"[AssemblyAI] ⚡ Found cached transcript, loading from disk!")
-        if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path) # cleanup
         try:
             with open(cache_path, "r") as f:
                 data = json.load(f)
@@ -70,23 +61,17 @@ def transcribe_and_diarize(audio_url: str, session_id: str) -> Transcript:
     # 3. Transcribe if no cache
     api_key = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
     if not api_key:
-        if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
         raise RuntimeError("ASSEMBLYAI_API_KEY not set in environment or is empty")
 
     aai.settings.api_key = api_key
-    print(f"[AssemblyAI] Using API Key: {api_key[:5]}...{api_key[-5:]}")
+    print(f"[AssemblyAI] API key configured (ends ...{api_key[-4:]})")
 
     transcriber = aai.Transcriber()
     
-    # Upload the LOCAL file instead of passing the URL
-    # This avoids "GetObject: Authentication error" from S3/Supabase
-    print(f"[AssemblyAI] Uploading local file to AAI...")
-    upload_url = transcriber.upload_file(temp_audio_path)
-    print(f"[AssemblyAI] Starting transcription for uploaded file...")
-
+    # Pass the presigned URL directly to AssemblyAI
+    print(f"[AssemblyAI] Requesting remote transcription via presigned URL...")
     transcript = transcriber.transcribe(
-        upload_url,
+        audio_url,
         config=aai.TranscriptionConfig(
             speaker_labels=True,
             speakers_expected=2,
@@ -96,8 +81,6 @@ def transcribe_and_diarize(audio_url: str, session_id: str) -> Transcript:
     )
 
     if transcript.status == aai.TranscriptStatus.error:
-        if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
         raise RuntimeError(f"AssemblyAI transcription failed: {transcript.error}")
 
     # Build transcript object
@@ -147,8 +130,5 @@ def transcribe_and_diarize(audio_url: str, session_id: str) -> Transcript:
                 json.dump(transcript_obj.dict(), f)
     except Exception as e:
         print(f"[AssemblyAI] Failed to save cache: {e}")
-    finally:
-        if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
 
     return transcript_obj

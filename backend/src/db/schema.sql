@@ -249,6 +249,37 @@ CREATE TABLE IF NOT EXISTS simulation_answers (
 );
 
 -- ============================================================
+-- METRIC FEEDBACK (user trust-building)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS metric_feedback (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    metric_id       UUID REFERENCES metrics(id) ON DELETE CASCADE,
+    user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
+    feedback_type   TEXT NOT NULL,
+    user_score      FLOAT,
+    comment         TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- ADDITIONAL COLUMNS (added by migrations)
+-- ============================================================
+
+ALTER TABLE interviews ADD COLUMN IF NOT EXISTS top_strengths JSONB;
+ALTER TABLE interviews ADD COLUMN IF NOT EXISTS key_improvement_areas JSONB;
+ALTER TABLE interviews ADD COLUMN IF NOT EXISTS analysis_started_at TIMESTAMPTZ;
+ALTER TABLE interviews ADD COLUMN IF NOT EXISTS analysis_completed_at TIMESTAMPTZ;
+ALTER TABLE metric_examples ADD COLUMN IF NOT EXISTS question_text TEXT;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_interview_metric') THEN
+        ALTER TABLE metrics ADD CONSTRAINT unique_interview_metric UNIQUE (interview_id, metric_name);
+    END IF;
+END $$;
+
+-- ============================================================
 -- INDEXES
 -- ============================================================
 
@@ -259,3 +290,8 @@ CREATE INDEX IF NOT EXISTS idx_metrics_interview ON metrics(interview_id);
 CREATE INDEX IF NOT EXISTS idx_patterns_user ON patterns(user_id);
 CREATE INDEX IF NOT EXISTS idx_roadmap_tasks_roadmap ON roadmap_tasks(roadmap_id);
 CREATE INDEX IF NOT EXISTS idx_simulation_sessions_user ON simulation_sessions(user_id);
+
+-- Phase 3: Compound Indexes for O(logN) dashboard aggregation and filtering
+CREATE INDEX IF NOT EXISTS idx_interviews_user_status_date ON interviews(user_id, status, interviewed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_metrics_interview_name ON metrics(interview_id, metric_name);
+CREATE INDEX IF NOT EXISTS idx_patterns_user_type_severity ON patterns(user_id, pattern_type, severity);

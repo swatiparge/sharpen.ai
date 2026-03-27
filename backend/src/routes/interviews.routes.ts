@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/client';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
@@ -7,6 +7,7 @@ import { config } from '../config';
 import { interviewQueue } from '../workers/queues';
 import { validate } from '../validators';
 import { createInterviewSchema, mediaUrlSchema, reconstructionSchema } from '../validators/interviews.validators';
+import { saveAnalysisResults } from '../workers/analysis.worker';
 
 const router = Router();
 router.use(authMiddleware);
@@ -197,17 +198,26 @@ router.post('/:id/reconstruction', validate(reconstructionSchema), async (req: A
         return res.status(400).json({ error: 'questions must be an array' });
     }
     try {
-        // Delete existing reconstruction questions and re-insert
+        const ownership = await db.query('SELECT id FROM interviews WHERE id = $1 AND user_id = $2', [id, req.userId]);
+        if (!ownership.rows[0]) return res.status(403).json({ error: 'Forbidden access to this interview' });
+
+        // Delete existing reconstruction questions and re-insert as batch
         await db.query('DELETE FROM reconstruction_questions WHERE interview_id = $1', [id]);
-        for (let i = 0; i < questions.length; i++) {
-            const q = questions[i];
+        
+        if (questions.length > 0) {
+            const values: any[] = [];
+            const placeholders = questions.map((q: any, i: number) => {
+                const offset = i * 6;
+                values.push(id, i + 1, q.question_text, q.answer_text, q.followup_text || null, q.confidence_score || null);
+                return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`;
+            }).join(', ');
+
             await db.query(
-                `INSERT INTO reconstruction_questions
-          (interview_id, question_order, question_text, answer_text, followup_text, confidence_score)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-                [id, i + 1, q.question_text, q.answer_text, q.followup_text, q.confidence_score]
+                `INSERT INTO reconstruction_questions (interview_id, question_order, question_text, answer_text, followup_text, confidence_score) VALUES ${placeholders}`,
+                values
             );
         }
+
         return res.json({ message: 'Reconstruction saved', count: questions.length });
     } catch (err) {
         console.error(err);
@@ -221,17 +231,8 @@ router.post('/:id/metrics/:metricName/feedback', async (req: AuthRequest, res: R
     const { feedback_type, user_score, comment } = req.body; // feedback_type: 'AGREE' | 'DISAGREE'
 
     try {
-        await db.query(`
-            CREATE TABLE IF NOT EXISTS metric_feedback (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                metric_id UUID REFERENCES metrics(id),
-                user_id UUID REFERENCES users(id),
-                feedback_type TEXT NOT NULL,
-                user_score FLOAT,
-                comment TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        `);
+        const ownership = await db.query('SELECT id FROM interviews WHERE id = $1 AND user_id = $2', [id, req.userId]);
+        if (!ownership.rows[0]) return res.status(403).json({ error: 'Forbidden access to this interview' });
 
         // Find the metric
         const metric = await db.query(

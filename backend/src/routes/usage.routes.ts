@@ -1,8 +1,9 @@
 import { Router, Response } from 'express';
 import { db } from '../db/client';
-import { AuthRequest } from '../middleware/auth.middleware';
+import { AuthRequest, authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();
+router.use(authMiddleware);
 
 /**
  * GET /usage/analytics
@@ -11,6 +12,12 @@ const router = Router();
  * - Total audio analysis time used per user
  */
 router.get('/analytics', async (req: AuthRequest, res: Response) => {
+    // Admin-only gate: Only users listed in ADMIN_USER_IDS can access analytics
+    const adminIds = (process.env.ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (adminIds.length > 0 && !adminIds.includes(req.userId!)) {
+        return res.status(403).json({ error: 'Forbidden: admin access required' });
+    }
+
     try {
         // 1. User Login Analytics
         const userStats = await db.query(`
@@ -24,7 +31,6 @@ router.get('/analytics', async (req: AuthRequest, res: Response) => {
         `);
 
         // 2. Audio Analysis Usage per User
-        // Sum of duration_secs from interview_media
         const usageStats = await db.query(`
             SELECT 
                 u.full_name,

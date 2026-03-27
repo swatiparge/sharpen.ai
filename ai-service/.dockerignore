@@ -10,3 +10,5 @@ __pycache__
 .DS_Store
 uploads/*
 cache/*
+.pytest_cache
+tests/

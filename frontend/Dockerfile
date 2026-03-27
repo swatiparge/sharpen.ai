@@ -12,9 +12,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build args for public env vars baked at build time
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# Use placeholder for public env var to replace at runtime
+ENV NEXT_PUBLIC_API_URL=__RUNTIME_API_URL__
 
 RUN npm run build
 
@@ -35,10 +34,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# Add runtime entrypoint for env var injection
+COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
 USER nextjs
 
 EXPOSE 3001
 ENV PORT=3001
 ENV HOSTNAME="0.0.0.0"
 
+ENTRYPOINT ["./entrypoint.sh"]
 CMD ["node", "server.js"]

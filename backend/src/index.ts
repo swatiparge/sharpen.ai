@@ -5,8 +5,9 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 import { config } from './config';
-import { connectDB } from './db/client';
+import { db, connectDB } from './db/client';
 import { errorMiddleware } from './middleware/error.middleware';
+import { saveAnalysisResults } from './workers/analysis.worker';
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -42,110 +43,53 @@ app.get('/health', (_req, res) => {
     res.json({ status: 'ok', service: 'sharpen.ai API', timestamp: new Date().toISOString() });
 });
 
-// ── TEMP: One-time migration (remove after use) ────────────
-app.get('/migrate-once', async (_req, res) => {
-    const { db } = await import('./db/client');
-    const queries = [
-        `ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT UNIQUE;`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`,
-        `ALTER TABLE onboarding_profiles ADD COLUMN IF NOT EXISTS interview_stage TEXT;`,
-        `ALTER TABLE onboarding_profiles ADD COLUMN IF NOT EXISTS struggle_areas TEXT[];`,
-        `ALTER TABLE onboarding_profiles ADD COLUMN IF NOT EXISTS resume_path TEXT;`,
-    ];
-    const results: string[] = [];
-    for (const q of queries) {
-        try {
-            await db.query(q);
-            results.push(`✅ ${q.substring(0, 70)}`);
-        } catch (err: any) {
-            if (err.code === '42701' || err.code === '42710') {
-                results.push(`⏭️ Skipped: ${q.substring(0, 70)}`);
-            } else {
-                results.push(`❌ ${err.message}: ${q.substring(0, 70)}`);
-            }
+// ── Webhook (unauthenticated, server-to-server from AI service) ─
+app.post('/interviews/webhook/analyze', async (req, res) => {
+    try {
+        const { success, interview_id, data, error } = req.body;
+        if (!interview_id) {
+            return res.status(400).json({ error: 'interview_id is required' });
         }
-    }
-    res.json({ results });
-});
-
-// ── TEMP: Debug onboarding insert ───────────────────────────
-app.get('/debug-onboarding', async (_req, res) => {
-    const { db } = await import('./db/client');
-    const checks: any[] = [];
-
-    // Check table columns
-    try {
-        const cols = await db.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'onboarding_profiles' ORDER BY ordinal_position`);
-        checks.push({ table_columns: cols.rows });
+        console.log(`[Webhook] Received callback for interview ${interview_id}, success: ${success}`);
+        if (success && data) {
+            const interviewResult = await db.query('SELECT user_id FROM interviews WHERE id = $1', [interview_id]);
+            if (!interviewResult.rows[0]) return res.status(404).json({ error: 'Interview not found' });
+            await saveAnalysisResults(interview_id, interviewResult.rows[0].user_id, data);
+            console.log(`[Webhook] ✅ Analysis saved for interview ${interview_id}`);
+            return res.json({ message: 'Analysis results saved' });
+        } else {
+            await db.query("UPDATE interviews SET status = 'FAILED', failure_reason = $2 WHERE id = $1", [interview_id, error || 'AI analysis failed']);
+            console.error(`[Webhook] ❌ Failure for ${interview_id}: ${error}`);
+            return res.json({ message: 'Failure recorded' });
+        }
     } catch (err: any) {
-        checks.push({ table_error: err.message });
-    }
-
-    // Check if any users exist
-    try {
-        const users = await db.query(`SELECT id, email FROM users LIMIT 3`);
-        checks.push({ users: users.rows });
-    } catch (err: any) {
-        checks.push({ users_error: err.message });
-    }
-
-    // Check existing onboarding profiles
-    try {
-        const profiles = await db.query(`SELECT id, user_id FROM onboarding_profiles LIMIT 3`);
-        checks.push({ profiles: profiles.rows });
-    } catch (err: any) {
-        checks.push({ profiles_error: err.message });
-    }
-
-    res.json(checks);
-});
-
-// ── TEMP: Direct test insert ────────────────────────────────
-app.get('/test-insert', async (_req, res) => {
-    const { db } = await import('./db/client');
-    try {
-        const result = await db.query(
-            `INSERT INTO onboarding_profiles
-                (user_id, "current_role", years_experience, current_company)
-             VALUES ($1, $2, $3, $4)
-             RETURNING *`,
-            ['56f477cb-ba7f-4359-8c7f-2e4f9b3c00d9', 'Frontend Engineer', '2-3', 'TestCo']
-        );
-        res.json({ success: true, row: result.rows[0] });
-    } catch (err: any) {
-        res.json({
-            success: false,
-            error: err.message,
-            code: err.code,
-            detail: err.detail,
-            hint: err.hint,
-            position: err.position,
-            where: err.where,
-        });
+        console.error('[Webhook] Error:', err);
+        return res.status(500).json({ error: 'Failed to process webhook' });
     }
 });
 
-  // ── API Routes ──────────────────────────────────────────────
-  app.use('/auth', authRoutes);
-  app.use('/onboarding', onboardingRoutes);
-  app.use('/interviews', interviewRoutes);
-  app.use('/dashboard', dashboardRoutes);
-  app.use('/gaps', gapsRoutes);
-  app.use('/roadmap', roadmapRoutes);
-  app.use('/simulations', simulationsRoutes);
-  app.use('/profile', profileRoutes);
-  app.use('/learn', learnRoutes);
-  app.use('/health', healthRoutes);
-  app.use('/usage', usageRoutes);
+// ── API Routes ──────────────────────────────────────────────
+app.use('/auth', authRoutes);
+app.use('/onboarding', onboardingRoutes);
+app.use('/interviews', interviewRoutes);
+app.use('/dashboard', dashboardRoutes);
+app.use('/gaps', gapsRoutes);
+app.use('/roadmap', roadmapRoutes);
+app.use('/simulations', simulationsRoutes);
+app.use('/profile', profileRoutes);
+app.use('/learn', learnRoutes);
+app.use('/health', healthRoutes);
+app.use('/usage', usageRoutes);
 
 // ── Error Handler ────────────────────────────────────────────
 app.use(errorMiddleware);
 
 // ── Start Server ─────────────────────────────────────────────
+let server: ReturnType<typeof app.listen> | null = null;
+
 async function bootstrap() {
     await connectDB();
-    app.listen(config.port, () => {
+    server = app.listen(config.port, () => {
         console.log(`\n🚀 sharpen.ai API running at http://localhost:${config.port}`);
         console.log(`   Health: http://localhost:${config.port}/health`);
         console.log(`   Env:    ${config.nodeEnv}\n`);
@@ -156,5 +100,46 @@ bootstrap().catch((err) => {
     console.error('Failed to start server:', err);
     process.exit(1);
 });
+
+// ── Graceful Shutdown ─────────────────────────────────────────
+function gracefulShutdown(signal: string) {
+    console.log(`\n[Server] Received ${signal}. Starting graceful shutdown...`);
+    
+    if (server) {
+        server.close(async () => {
+            console.log('[Server] HTTP server closed.');
+            
+            try {
+                // Drain DB pool cleanly
+                await db.end();
+                console.log('[DB] Database connection pool closed.');
+                
+                // Drain Redis cleanly
+                const redis = getRedis();
+                if (redis) {
+                    await redis.quit();
+                    console.log('[Redis] Redis connection closed.');
+                }
+                
+                console.log(`[Server] Graceful shutdown complete. Exiting cleanly.`);
+                process.exit(0);
+            } catch (err) {
+                console.error('[Server] Error during shutdown:', err);
+                process.exit(1);
+            }
+        });
+        
+        // Failsafe timeout
+        setTimeout(() => {
+            console.error('[Server] Forcefully shutting down after 10s timeout.');
+            process.exit(1);
+        }, 10000);
+    } else {
+        process.exit(0);
+    }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;

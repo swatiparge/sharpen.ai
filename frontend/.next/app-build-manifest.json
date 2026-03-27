@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/dashboard/interviews/[id]/metrics/[metricName]/page": [
+    "/dashboard/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/interviews/[id]/metrics/[metricName]/page.js"
+      "static/chunks/app/dashboard/page.js"
     ],
     "/dashboard/layout": [
       "static/chunks/webpack.js",
@@ -16,20 +16,20 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/page": [
+    "/dashboard/record/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/app/dashboard/record/page.js"
     ],
-    "/dashboard/page": [
+    "/dashboard/record/analyzing/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/page.js"
+      "static/chunks/app/dashboard/record/analyzing/[id]/page.js"
     ],
-    "/_not-found/page": [
+    "/dashboard/interviews/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/dashboard/interviews/[id]/page.js"
     ]
   }
 }

@@ -91,21 +91,41 @@ export default function CoreSkillMetrics({ metrics, interviewId }: CoreSkillMetr
                     const m = metrics.find(item => item.metric_name === metricKey);
                     
                     if (!m) {
+                        const isHovered = hoveredMetric === metricKey;
                         return (
                             <div
                                 key={metricKey}
-                                className="relative bg-gray-50/50 dark:bg-white/[0.02] rounded-[2rem] border border-gray-100 dark:border-white/5 p-6 flex flex-col justify-between h-[180px] opacity-40 transition-all duration-500"
+                                onMouseEnter={() => setHoveredMetric(metricKey)}
+                                onMouseLeave={() => setHoveredMetric(null)}
+                                className="relative bg-gray-50/50 dark:bg-white/[0.02] rounded-[2rem] border border-gray-100 dark:border-white/5 p-6 flex flex-col justify-between h-[210px] opacity-60 hover:opacity-100 transition-all duration-500 group"
                             >
-                                <div className="flex justify-between items-start mb-4">
-                                    <h3 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest pr-2">{info.title}</h3>
-                                </div>
-                                <div>
-                                    <div className="flex items-baseline gap-2 mb-3">
-                                        <span className="text-3xl font-medium tracking-tight text-gray-300 dark:text-gray-700">--</span>
-                                        <span className="text-[9px] font-bold text-gray-300 dark:text-gray-700 uppercase tracking-widest">/10</span>
+                                <div className="flex justify-between items-start mb-4 relative z-10">
+                                    <h3 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.15em] pr-2 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-500">{info.title}</h3>
+                                    
+                                    <div
+                                        className="flex-shrink-0 w-6 h-6 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 flex items-center justify-center transition-all duration-300"
+                                    >
+                                        <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                                        </svg>
                                     </div>
-                                    <div className="w-full bg-gray-100 dark:bg-white/5 rounded-full h-1 overflow-hidden"></div>
-                                    <p className="text-[8px] font-bold text-gray-300 dark:text-gray-800 uppercase tracking-widest mt-3">Not Assessed</p>
+
+                                    {/* Tooltip */}
+                                    {isHovered && (
+                                        <div className="absolute z-50 bottom-full left-0 mb-4 w-72 bg-white dark:bg-[#0B1221] border border-gray-100 dark:border-white/10 text-gray-900 dark:text-white text-[13px] rounded-[1.5rem] p-6 shadow-2xl leading-relaxed pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                            <p className="font-bold mb-2 text-gray-500 uppercase tracking-widest text-[10px]">NOT ASSESSED</p>
+                                            <p className="text-gray-500 dark:text-gray-400 font-medium">No relevant signals were detected in the audio for <strong>{info.title}</strong> throughout this interview. The AI omits irrelevant metrics to prevent inaccurate scoring.</p>
+                                            <div className="absolute top-full left-8 w-0 h-0 border-l-[8px] border-r-[8px] border-t-[8px] border-l-transparent border-r-transparent border-t-white dark:border-t-[#0B1221]" />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="flex items-baseline gap-2">
+                                        <span className="text-5xl font-bold tracking-tighter text-gray-300 dark:text-gray-700">--</span>
+                                        <span className="text-[10px] font-bold text-gray-300 dark:text-gray-700 uppercase tracking-widest">/10</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 dark:bg-white/5 rounded-full h-1.5 overflow-hidden shadow-inner"></div>
+                                    <p className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.15em] pt-2">Not Assessed</p>
                                 </div>
                             </div>
                         );

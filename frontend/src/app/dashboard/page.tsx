@@ -2,7 +2,8 @@
 
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect } from 'react';
+import Link from 'next/link';
 
 export default function DashboardPage() {
     const { user, isLoading } = useAuth();
@@ -67,12 +68,12 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-[#FDFCFB] dark:bg-[#0B1221] selection:bg-brand-purple/10 flex flex-col transition-colors duration-300">
             {/* Hero Section */}
-            <main className="max-w-6xl mx-auto px-6 pt-32 pb-32 flex-grow flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                <h1 className="text-5xl md:text-7xl font-bold text-gray-900 dark:text-white mb-8 tracking-tight leading-tight">
+            <main className="max-w-6xl mx-auto px-6 pt-16 pb-16 flex-grow flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                <h1 className="text-5xl md:text-7xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight leading-tight">
                     Start your <br />
                     <span className="font-serif italic text-brand-purple">first analysis</span>
                 </h1>
-                <p className="text-gray-500 dark:text-gray-400 text-base md:text-lg max-w-2xl font-medium leading-relaxed mb-24 opacity-80">
+                <p className="text-gray-500 dark:text-gray-400 text-base md:text-lg max-w-2xl font-medium leading-relaxed mb-12 opacity-80">
                     Choose how you want to input your interview data to begin the analysis. We&apos;ll guide you through every step of the process.
                 </p>
 
@@ -83,7 +84,7 @@ export default function DashboardPage() {
                             key={opt.title}
                             className="group relative flex flex-col p-10 py-12 rounded-[2.5rem] bg-white dark:bg-[#0F172A]/40 border border-gray-100 dark:border-white/5 shadow-soft hover:shadow-2xl hover:border-brand-purple/20 transition-all duration-500"
                         >
-                            <div className="mb-14 flex justify-center">
+                            <div className="mb-8 flex justify-center">
                                 <div className="w-20 h-20 rounded-[2rem] bg-brand-purple/5 dark:bg-white/5 border border-brand-purple/10 dark:border-white/5 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform duration-500">
                                     <div className="text-brand-purple dark:text-white">
                                         {opt.icon}
@@ -95,7 +96,7 @@ export default function DashboardPage() {
                                 <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight group-hover:text-brand-purple transition-colors">
                                     {opt.title}
                                 </h3>
-                                <p className="text-gray-500 dark:text-gray-400 font-medium leading-relaxed mb-12 text-[15px] opacity-70">
+                                <p className="text-gray-500 dark:text-gray-400 font-medium leading-relaxed mb-8 text-[15px] opacity-70">
                                     {opt.description}
                                 </p>
                             </div>
@@ -127,9 +128,9 @@ export default function DashboardPage() {
                 </div>
                 
                 <div className="flex items-center gap-10">
-                    <button className="text-gray-400 hover:text-brand-purple dark:hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">Help Center</button>
-                    <button className="text-gray-400 hover:text-brand-purple dark:hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">Terms of Service</button>
-                    <button className="text-gray-400 hover:text-brand-purple dark:hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">Privacy Policy</button>
+                    <a href="mailto:legal@sharpen.ai" className="text-gray-400 hover:text-brand-purple dark:hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">Help Center</a>
+                    <Link href="/terms" className="text-gray-400 hover:text-brand-purple dark:hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">Terms of Service</Link>
+                    <Link href="/privacy" className="text-gray-400 hover:text-brand-purple dark:hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">Privacy Policy</Link>
                 </div>
             </footer>
         </div>

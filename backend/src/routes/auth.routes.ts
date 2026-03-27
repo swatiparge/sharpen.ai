@@ -10,8 +10,39 @@ import { signupSchema, loginSchema, googleAuthSchema } from '../validators/auth.
 const router = Router();
 const googleClient = new OAuth2Client(config.google.clientId);
 
+// ── Rate Limiter ────────────────────────────────────────────────────────
+const rateLimitMap = new Map<string, { count: number, resetTime: number }>();
+
+// Cleanup expired rate-limit entries every 15 minutes to prevent memory leak
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of rateLimitMap) {
+        if (record.resetTime < now) rateLimitMap.delete(key);
+    }
+}, 15 * 60 * 1000).unref();
+
+function authLimiter(req: Request, res: Response, next: import('express').NextFunction) {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000;
+    
+    let record = rateLimitMap.get(ip);
+    if (!record || record.resetTime < now) {
+        record = { count: 1, resetTime: now + windowMs };
+    } else {
+        record.count++;
+    }
+    
+    rateLimitMap.set(ip, record);
+    
+    if (record.count > 10) {
+        return res.status(429).json({ error: 'Too many authentication attempts, please try again later.' });
+    }
+    next();
+}
+
 // POST /auth/google – Google OAuth login/signup
-router.post('/google', validate(googleAuthSchema), async (req: Request, res: Response) => {
+router.post('/google', authLimiter, validate(googleAuthSchema), async (req: Request, res: Response) => {
     const { credential } = req.body;
     try {
         // Verify the Google ID token
@@ -84,7 +115,7 @@ router.post('/google', validate(googleAuthSchema), async (req: Request, res: Res
 });
 
 // POST /auth/signup (kept as fallback)
-router.post('/signup', validate(signupSchema), async (req: Request, res: Response) => {
+router.post('/signup', authLimiter, validate(signupSchema), async (req: Request, res: Response) => {
     const { email, password, full_name } = req.body;
     try {
         const existing = await db.query('SELECT id FROM users WHERE email = $1', [email]);
@@ -112,7 +143,7 @@ router.post('/signup', validate(signupSchema), async (req: Request, res: Respons
 });
 
 // POST /auth/login (kept as fallback)
-router.post('/login', validate(loginSchema), async (req: Request, res: Response) => {
+router.post('/login', authLimiter, validate(loginSchema), async (req: Request, res: Response) => {
     const { email, password } = req.body;
     try {
         const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);

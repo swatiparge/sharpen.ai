@@ -31,45 +31,37 @@ interface AnalysisResult {
     roadmap?: { week_label: string; theme: string; tasks: string[] }[];
 }
 
-async function saveAnalysisResults(
+export async function saveAnalysisResults(
     interviewId: string,
     userId: string,
     analysis: AnalysisResult
 ): Promise<void> {
-    // Ensure columns exist (cheap operation in PG)
-    await db.query(`ALTER TABLE interviews ADD COLUMN IF NOT EXISTS top_strengths JSONB;`);
-    await db.query(`ALTER TABLE interviews ADD COLUMN IF NOT EXISTS key_improvement_areas JSONB;`);
-    await db.query(`ALTER TABLE metric_examples ADD COLUMN IF NOT EXISTS question_text TEXT;`);
-    await db.query(`
-        DO $$ 
-        BEGIN 
-            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_interview_metric') THEN 
-                ALTER TABLE metrics ADD CONSTRAINT unique_interview_metric UNIQUE (interview_id, metric_name); 
-            END IF; 
-        END $$;
-    `);
-
     // START TRANSACTION
     const client = await db.connect();
     try {
         await client.query('BEGIN');
 
         // 1. Save transcript if provided
-        if (analysis.transcript) {
+        if (analysis.transcript && analysis.transcript.length > 0) {
             await client.query('DELETE FROM transcript_segments WHERE interview_id = $1', [interviewId]);
-            const rawText = analysis.transcript.map((t) => t.text).join(' ');
+            const rawText = analysis.transcript.map((t: any) => t.text).join(' ');
             await client.query(
                 'INSERT INTO transcripts (interview_id, raw_text) VALUES ($1, $2) ON CONFLICT (interview_id) DO UPDATE SET raw_text = EXCLUDED.raw_text',
                 [interviewId, rawText]
             );
 
-            for (let i = 0; i < analysis.transcript.length; i++) {
-                const t = analysis.transcript[i];
-                await client.query(
-                    'INSERT INTO transcript_segments (interview_id, segment_order, speaker, text, start_ms, end_ms) VALUES ($1,$2,$3,$4,$5,$6)',
-                    [interviewId, i + 1, t.speaker, t.text, t.start_ms, t.end_ms]
-                );
-            }
+            // Optimized batch insertion for N items
+            const values: any[] = [];
+            const placeholders = analysis.transcript.map((t: any, i: number) => {
+                const offset = i * 6;
+                values.push(interviewId, i + 1, t.speaker, t.text, t.start_ms || 0, t.end_ms || 0);
+                return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`;
+            }).join(', ');
+            
+            await client.query(
+                `INSERT INTO transcript_segments (interview_id, segment_order, speaker, text, start_ms, end_ms) VALUES ${placeholders}`,
+                values
+            );
         }
 
         // 2. Save metrics
@@ -186,66 +178,54 @@ export async function handleAudioAnalysis(job: Job<AnalyzeJobPayload>): Promise<
         const audioUrl = await getDownloadSignedUrl(storagePath);
         console.log(`[AnalysisWorker] Generated presigned URL for audio`);
 
-  // 2. Call Python AI service
-    const aiServiceUrl = config.aiService.url;
-    console.log(`[AnalysisWorker] Calling AI service at ${aiServiceUrl}/analyze`);
+        // 2. Call Python AI service with Webhook URL
+        const aiServiceUrl = config.aiService.url;
+        const backendUrl = process.env.BACKEND_PUBLIC_URL || `http://localhost:${config.port}`;
+        const webhookUrl = `${backendUrl}/interviews/webhook/analyze`;
 
-    // Node 18+ native fetch has a hardcoded headers timeout (UND_ERR_HEADERS_TIMEOUT).
-    // We set timeouts to 0 (unlimited) because the AI pipeline (transcription + LLM scoring)
-    // can take 3-5 minutes before returning the first response byte.
-    const { fetch: undiciFetch, Agent } = require('undici');
-    const customDispatcher = new Agent({ 
-      headersTimeout: 0,   // unlimited – wait as long as needed
-      bodyTimeout: 0,      // unlimited
-      connectTimeout: 30 * 1000,  // 30s to establish initial connection
-    });
+        console.log(`[AnalysisWorker] Dispatching AI service async task to ${aiServiceUrl}/analyze`);
 
-    console.log(`[AnalysisWorker] Sending audio URL: ${audioUrl.substring(0, 50)}...`);
-    
-    const response = await undiciFetch(`${aiServiceUrl}/analyze`, {
-      method: 'POST',
-      dispatcher: customDispatcher,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        audio_url: audioUrl,
-        interview_id: interviewId,
-        metadata: {
-          current_role: metadata.current_role || '',
-          target_level: metadata.target_level || '',
-          company: metadata.company || '',
-          round: metadata.round || '',
-          name: metadata.name || '',
-        },
-      }),
-    });
+        const response = await fetch(`${aiServiceUrl}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                audio_url: audioUrl,
+                interview_id: interviewId,
+                webhook_url: webhookUrl,
+                metadata: {
+                    current_role: metadata.current_role || '',
+                    target_level: metadata.target_level || '',
+                    company: metadata.company || '',
+                    round: metadata.round || '',
+                    name: metadata.name || '',
+                },
+            }),
+        });
 
-    console.log(`[AnalysisWorker] AI service responded with status: ${response.status}`);
+        console.log(`[AnalysisWorker] AI service dispatched with status: ${response.status}`);
 
         if (!response.ok) {
             const errorBody = await response.text();
             throw new Error(`AI service returned ${response.status}: ${errorBody}`);
         }
 
-        const analysis = (await response.json()) as AnalysisResult;
-
-        // 3. Save results to DB (same as before)
-        await saveAnalysisResults(interviewId, userId, analysis);
-
-        console.log(`[AnalysisWorker] ✅ Audio analysis complete for interview ${interviewId}`);
-  } catch (err: any) {
-    console.error(`[AnalysisWorker] ❌ Audio analysis failed for ${interviewId}:`, err);
-    console.error(`[AnalysisWorker] Error details:`, {
-      message: err.message,
-      code: err.code,
-      cause: err.cause,
-      stack: err.stack?.substring(0, 500),
-    });
-    await db.query(
-      "UPDATE interviews SET status = 'FAILED', failure_reason = $2 WHERE id = $1",
-      [interviewId, err.message || 'Unknown error']
-    );
-    throw err;
-  }
+        // Webhook pattern: The AI service returns 202 instantly.
+        // We DO NOT await `saveAnalysisResults` here. The DB stays in 'ANALYZING' state.
+        console.log(`[AnalysisWorker] 🚀 Audio analysis successfully dispatched. Awaiting Webhook callback.`);
+    } catch (err: any) {
+        console.error(`[AnalysisWorker] ❌ Audio analysis failed for ${interviewId}:`, err);
+        console.error(`[AnalysisWorker] Error details:`, {
+            message: err.message,
+            code: err.code,
+            cause: err.cause,
+            stack: err.stack?.substring(0, 500),
+        });
+        await db.query(
+            "UPDATE interviews SET status = 'FAILED', failure_reason = $2 WHERE id = $1",
+            [interviewId, err.message || 'Unknown error']
+        );
+        throw err;
+    }
 }
 
 export async function handleReconstructionAnalysis(job: Job<ReconstructionAnalyzeJobPayload>): Promise<void> {

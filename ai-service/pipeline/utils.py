@@ -1,4 +1,5 @@
 import time
+import random
 import functools
 from openai import APIError
 
@@ -22,6 +23,7 @@ def retry_llm_call(max_retries=3, initial_wait=2, backoff=2):
                         raise
                     print(f"[Retry] ⚠️ LLM call failed ({e}). Retrying in {wait_time}s (Attempt {retries}/{max_retries})...")
                     time.sleep(wait_time)
-                    wait_time = min(10, wait_time * backoff)
+                    # Dynamic backoff with exponential scaling and Jitter to prevent thundering herd
+                    wait_time = min(10, wait_time * backoff) + random.uniform(0.1, 1.5)
         return wrapper
     return decorator

@@ -12,6 +12,7 @@ import uuid
 import shutil
 import hashlib
 import json
+import httpx
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -51,6 +52,7 @@ class AnalyzeRequest(BaseModel):
     audio_url: str                  # Presigned S3 GET URL for the audio
     interview_id: str
     metadata: dict = {}             # role, level, company, round, etc.
+    webhook_url: Optional[str] = None # Fire-and-forget webhook URL
 
 
 class AnalyzeResponse(BaseModel):
@@ -142,13 +144,6 @@ class TextAnalyzeRequest(BaseModel):
     analysis_type: str = "reconstruction"  # 'reconstruction' or 'simulation'
     metadata: dict = {}
 
-
-class ReconstructionRequest(BaseModel):
-    interview_id: str
-    qa_pairs: list[QAPair]
-    metadata: dict = {}
-
-
 # ── Health Check ─────────────────────────────────────────────────
 
 @app.get("/health")
@@ -166,15 +161,8 @@ def health():
 
 # ── Main Analysis Endpoint (called by Node.js backend) ──────────
 
-@app.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_audio(req: AnalyzeRequest):
-    """
-    Full analysis pipeline:
-    1. AssemblyAI: Transcription + Speaker Diarization
-    2. NVIDIA NIM: Extract QA pairs from transcript
-    3. NVIDIA NIM: Score each answer on 8 metrics
-    4. Aggregate scores into final report
-    """
+def _run_sync_pipeline(req: AnalyzeRequest) -> AnalyzeResponse:
+    """Core synchronous pipeline logic"""
     try:
         session_id = req.interview_id
 
@@ -198,7 +186,8 @@ async def analyze_audio(req: AnalyzeRequest):
         if os.path.exists(analysis_cache_path):
             print(f"[Pipeline] ⚡ Found cached analysis result, bypassing LLM pipeline!")
             with open(analysis_cache_path, "r") as f:
-                return json.load(f)
+                cached_data = json.load(f)
+                return AnalyzeResponse(**cached_data)
 
         print(f"[Pipeline] ✅ Step 1/4: Transcription complete ({len(transcript.turns)} utterances)")
 
@@ -259,6 +248,34 @@ async def analyze_audio(req: AnalyzeRequest):
     except Exception as e:
         print(f"[Pipeline] ❌ Analysis failed: {e}")
         traceback.print_exc()
+        raise Exception(str(e))
+
+def _process_webhook_task(req: AnalyzeRequest):
+    try:
+        result = _run_sync_pipeline(req)
+        print(f"[Webhook] Dispatching success to: {req.webhook_url}")
+        httpx.post(req.webhook_url, json={"success": True, "interview_id": req.interview_id, "data": result.dict()}, headers={"Content-Type": "application/json"}, timeout=10.0)
+    except Exception as e:
+        print(f"[Webhook] Dispatching failure to: {req.webhook_url}")
+        try:
+            httpx.post(req.webhook_url, json={"success": False, "interview_id": req.interview_id, "error": str(e)}, headers={"Content-Type": "application/json"}, timeout=10.0)
+        except Exception as push_err:
+            print(f"[Webhook] FAILED to send failure webhook: {push_err}")
+
+@app.post("/analyze")
+async def analyze_audio(req: AnalyzeRequest, background_tasks: BackgroundTasks):
+    """
+    Full analysis pipeline processing.
+    If webhook_url is provided, queues as background task and returns 202 instantly.
+    """
+    if req.webhook_url:
+        background_tasks.add_task(_process_webhook_task, req)
+        return {"status": "accepted", "message": "Analysis started. Results will be sent to webhook via BackgroundTask."}
+    
+    # Synchronous fallback
+    try:
+        return _run_sync_pipeline(req)
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 

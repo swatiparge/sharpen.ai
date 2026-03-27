@@ -7,7 +7,7 @@ const getPoolConfig = (): PoolConfig => {
     return {
         connectionString: config.databaseUrl,
         ssl: { rejectUnauthorized: false },
-        max: 10,
+        max: Number(process.env.DB_POOL_MAX || 10),
         idleTimeoutMillis: 60000,        // 60s before an idle client is closed
         connectionTimeoutMillis: 10000,  // 10s to get a connection from pool
         keepAlive: true,                 // Send TCP keepalives to prevent Supabase timeout

@@ -33,7 +33,9 @@ export const interviewQueue = {
         // Redis not available — run analysis inline
         console.warn(`⚠️  Redis not available — running job "${name}" inline (synchronously)`);
         try {
-            const { handleAudioAnalysis, handleReconstructionAnalysis } = await import('./analysis.worker');
+            // Fix production pathing bug where typescript dynamic imports fail on .js files
+            const workerModule = await import('./analysis.worker').catch(() => import('./analysis.worker.js'));
+            const { handleAudioAnalysis, handleReconstructionAnalysis } = workerModule;
             const fakeJob = { data, name, id: `inline-${Date.now()}` } as any;
 
             if (name === 'analyze') {

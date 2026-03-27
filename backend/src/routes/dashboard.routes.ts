@@ -9,39 +9,35 @@ router.use(authMiddleware);
 router.get('/', async (req: AuthRequest, res: Response) => {
     const userId = req.userId!;
     try {
-        // Recent interviews with scores
-        const recentInterviews = await db.query(
-            `SELECT id, name, company, round, overall_score, badge_label, interviewed_at
-       FROM interviews WHERE user_id = $1 AND status = 'ANALYZED'
-       ORDER BY interviewed_at DESC LIMIT 5`,
-            [userId]
-        );
-
-        // Performance trend – overall scores vs date
-        const trend = await db.query(
-            `SELECT interviewed_at, overall_score FROM interviews
-       WHERE user_id = $1 AND status = 'ANALYZED' AND overall_score IS NOT NULL
-       ORDER BY interviewed_at ASC LIMIT 20`,
-            [userId]
-        );
-
-        // Skill snapshot – latest avg score per metric
-        const skillSnapshot = await db.query(
-            `SELECT m.metric_name, ROUND(AVG(m.score)::numeric, 2) as avg_score
-       FROM metrics m
-       JOIN interviews i ON i.id = m.interview_id
-       WHERE i.user_id = $1
-       GROUP BY m.metric_name`,
-            [userId]
-        );
-
-        // Top weakness patterns for recommendations
-        const topWeakness = await db.query(
-            `SELECT title, description FROM patterns
-       WHERE user_id = $1 AND pattern_type = 'WEAKNESS' AND severity = 'HIGH'
-       ORDER BY occurrence DESC LIMIT 1`,
-            [userId]
-        );
+        // Execute all independent dashboard queries concurrently
+        const [recentInterviews, trend, skillSnapshot, topWeakness] = await Promise.all([
+            db.query(
+                `SELECT id, name, company, round, overall_score, badge_label, interviewed_at
+                 FROM interviews WHERE user_id = $1 AND status = 'ANALYZED'
+                 ORDER BY interviewed_at DESC LIMIT 5`,
+                [userId]
+            ),
+            db.query(
+                `SELECT interviewed_at, overall_score FROM interviews
+                 WHERE user_id = $1 AND status = 'ANALYZED' AND overall_score IS NOT NULL
+                 ORDER BY interviewed_at ASC LIMIT 20`,
+                [userId]
+            ),
+            db.query(
+                `SELECT m.metric_name, ROUND(AVG(m.score)::numeric, 2) as avg_score
+                 FROM metrics m
+                 JOIN interviews i ON i.id = m.interview_id
+                 WHERE i.user_id = $1
+                 GROUP BY m.metric_name`,
+                [userId]
+            ),
+            db.query(
+                `SELECT title, description FROM patterns
+                 WHERE user_id = $1 AND pattern_type = 'WEAKNESS' AND severity = 'HIGH'
+                 ORDER BY occurrence DESC LIMIT 1`,
+                [userId]
+            )
+        ]);
 
         return res.json({
             recent_interviews: recentInterviews.rows,

@@ -13,7 +13,7 @@ from models.report import MetricScore, AnswerAnalysis
 
 # NVIDIA NIM uses OpenAI-compatible API
 nvidia_client = None
-NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"
+NVIDIA_MODEL = "meta/llama-3.1-70b-instruct"
 
 
 def _get_client() -> OpenAI:
@@ -112,7 +112,7 @@ JSON format:
 """
 
 
-@retry_llm_call(max_retries=1)
+@retry_llm_call(max_retries=3)
 def score_answer(
     qa_pair: QAPair,
     job_role: str,
@@ -141,6 +141,14 @@ def score_answer(
         data = json.loads(clean)
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse scoring response for Q{qa_pair.question_number}: {e}")
+
+    # Clamp scores between 0.0 and 10.0 to prevent UI bugs from hallucinations
+    for m in data.get("metrics", []):
+        if "score" in m and isinstance(m["score"], (int, float)):
+            m["score"] = max(0.0, min(10.0, float(m["score"])))
+            
+    if "overall_answer_score" in data and isinstance(data["overall_answer_score"], (int, float)):
+        data["overall_answer_score"] = max(0.0, min(10.0, float(data["overall_answer_score"])))
 
     metric_scores = [MetricScore(**m) for m in data["metrics"]]
     
@@ -185,9 +193,9 @@ def score_all_answers(
             # If a strict failure happens after retries, we could inject a dummy or raise
             raise
 
-    # Keep max_workers at 2 for NVIDIA NIM free tier to avoid rate-limiting 504s.
-    # All 7 firing at once overwhelms the endpoint; 2 at a time is the sweet spot.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    # Keep default max_workers at 2 for NVIDIA NIM free tier to avoid rate-limiting 504s.
+    max_workers = int(os.environ.get("AI_SCORER_CONCURRENCY", 2))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = []
         for i, qa in enumerate(qa_pairs):
             futures.append(executor.submit(_score_and_store, i, qa))

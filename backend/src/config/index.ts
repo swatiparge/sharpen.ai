@@ -1,13 +1,18 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret && process.env.NODE_ENV !== 'test') { // Allow tests to mock it
+    throw new Error('FATAL: JWT_SECRET environment variable is missing.');
+}
+
 export const config = {
     appName: 'sharpen.ai',
     port: parseInt(process.env.PORT || '3000', 10),
     nodeEnv: process.env.NODE_ENV || 'development',
     databaseUrl: process.env.DATABASE_URL || '',
     jwt: {
-        secret: process.env.JWT_SECRET || 'changeme',
+        secret: jwtSecret || '',  // Guaranteed non-empty by the throw above (empty only in test env)
         expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     },
     redis: {
