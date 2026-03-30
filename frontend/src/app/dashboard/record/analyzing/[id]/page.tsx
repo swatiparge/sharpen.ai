@@ -119,10 +119,12 @@ export default function AnalyzingPage() {
     }, [token, interviewId, router]);
 
     useEffect(() => {
+        if (!token || !interviewId) return;
+        
         const interval = setInterval(pollStatus, 3000);
         pollStatus(); // immediate first poll
         return () => clearInterval(interval);
-    }, [pollStatus]);
+    }, [token, interviewId, pollStatus]);
     const handleRetry = async () => {
         if (!token || !interviewId) return;
         setIsRetrying(true);

@@ -10,8 +10,13 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
     const router = useRouter();
 
     useEffect(() => {
+        // Only redirect if we've finished the initial hydration check
+        // and we are certain there is no user session.
         if (!isLoading && !user) {
-            router.replace('/login');
+            const savedToken = localStorage.getItem('sharpen_token');
+            if (!savedToken) {
+                router.replace('/login');
+            }
         }
     }, [user, isLoading, router]);
 

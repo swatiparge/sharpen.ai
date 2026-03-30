@@ -29,6 +29,9 @@ COPY --from=builder /install /usr/local
 # Copy application source (exclude venv, cache, uploads)
 COPY --chown=aiservice:aiservice . .
 
+# Ensure the app directory is owned by the user
+RUN chown -R aiservice:aiservice /app
+
 USER aiservice
 
 EXPOSE 8000

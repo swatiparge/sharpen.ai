@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 
 interface User {
     id: string;
@@ -55,8 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('sharpen_user');
     };
 
+    const value = useMemo(() => ({
+        user,
+        token,
+        isLoading,
+        login,
+        logout
+    }), [user, token, isLoading]);
+
     return (
-        <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );
