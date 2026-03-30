@@ -51,7 +51,7 @@ Your response MUST exactly match this JSON schema:
 
     try:
         response = client.chat.completions.create(
-            model="meta/llama-3.1-8b-instruct",
+            model="meta/llama-3.1-70b-instruct",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Generate a lesson for the topic: {topic}"}

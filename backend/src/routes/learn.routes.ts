@@ -15,7 +15,7 @@ router.post('/generate', async (req: AuthRequest, res: Response) => {
     try {
         console.log(`[Learn] Requesting lesson for topic: ${topic}`);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
         
         const response = await fetch(`${config.aiService.url.replace('localhost', '127.0.0.1')}/generate-lesson`, {
             method: 'POST',
