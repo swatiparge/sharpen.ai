@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   full_name     TEXT NOT NULL,
   google_id     TEXT UNIQUE,         -- Google OAuth subject ID
   avatar_url    TEXT,                -- Google profile picture
+  credits_balance INTEGER DEFAULT 60, -- New users start with 60 credits (1 hour)
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
@@ -263,6 +264,20 @@ CREATE TABLE IF NOT EXISTS metric_feedback (
 );
 
 -- ============================================================
+-- CREDIT TRANSACTIONS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount INTEGER NOT NULL, -- positive for credits added, negative for spent
+    transaction_type TEXT NOT NULL, -- 'WELCOME_BONUS', 'ANALYSIS_SPENT', 'RECONSTRUCT_SPENT', 'TOPUP'
+    interview_id UUID REFERENCES interviews(id) ON DELETE SET NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
 -- ADDITIONAL COLUMNS (added by migrations)
 -- ============================================================
 
@@ -295,3 +310,4 @@ CREATE INDEX IF NOT EXISTS idx_simulation_sessions_user ON simulation_sessions(u
 CREATE INDEX IF NOT EXISTS idx_interviews_user_status_date ON interviews(user_id, status, interviewed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_metrics_interview_name ON metrics(interview_id, metric_name);
 CREATE INDEX IF NOT EXISTS idx_patterns_user_type_severity ON patterns(user_id, pattern_type, severity);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_user ON credit_transactions(user_id);

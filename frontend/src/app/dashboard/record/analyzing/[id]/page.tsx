@@ -63,7 +63,7 @@ const PRO_TIPS = [
 ];
 
 export default function AnalyzingPage() {
-    const { token } = useAuth();
+    const { token, refreshUser } = useAuth();
     const router = useRouter();
     const params = useParams();
     const interviewId = params.id as string;
@@ -106,17 +106,19 @@ export default function AnalyzingPage() {
             if (interview.status === 'DONE' || interview.status === 'COMPLETED' || interview.status === 'ANALYZED') {
                 setProgress(100);
                 setActiveStep(4);
+                // Refresh credits after analysis finishes
+                refreshUser();
                 setTimeout(() => {
                     router.push(`/dashboard/interviews/${interviewId}`);
                 }, 500);
             } else if (interview.status === 'FAILED') {
-                setProgress(0); // will show error
+                setProgress(0); 
                 setFailureReason(interview.failure_reason || 'Something went wrong. Please try again.');
             }
         } catch {
             // ignore polling errors
         }
-    }, [token, interviewId, router]);
+    }, [token, interviewId, router, refreshUser]);
 
     useEffect(() => {
         if (!token || !interviewId) return;
@@ -125,6 +127,7 @@ export default function AnalyzingPage() {
         pollStatus(); // immediate first poll
         return () => clearInterval(interval);
     }, [token, interviewId, pollStatus]);
+
     const handleRetry = async () => {
         if (!token || !interviewId) return;
         setIsRetrying(true);

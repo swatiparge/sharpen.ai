@@ -70,6 +70,16 @@ export default function DashboardHeader() {
                     {/* Theme Toggle */}
                     <ThemeToggle />
 
+                    {/* Credits Display */}
+                    <div className="hidden lg:flex items-center gap-2 bg-brand-purple/5 dark:bg-brand-purple/10 border border-brand-purple/20 px-3 py-1.5 rounded-full group hover:bg-brand-purple/10 transition-all cursor-default">
+                        <span className="text-xs font-bold text-brand-purple uppercase tracking-wider">Credits</span>
+                        <div className="h-4 w-[1px] bg-brand-purple/20 mx-1"></div>
+                        <span className="text-sm font-black text-gray-900 dark:text-white flex items-center gap-1.5 font-mono">
+                            {user.credits_balance || 0}
+                            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">MINS</span>
+                        </span>
+                    </div>
+
                     {/* Start Analysis Button */}
                     <button 
                         onClick={() => {

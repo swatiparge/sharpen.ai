@@ -168,7 +168,37 @@ export default function SetupRecordingPage() {
                                 ref={fileInputRef}
                                 type="file"
                                 accept=".mp3,.wav,.m4a,.webm"
-                                onChange={handleFileSelect}
+                                onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+
+                                    // Check format
+                                    const allowed = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/x-m4a', 'audio/webm', 'audio/mp3'];
+                                    if (!allowed.includes(file.type)) {
+                                        setError('Supported formats: MP3, WAV, M4A');
+                                        return;
+                                    }
+
+                                    // Check duration
+                                    const audio = new Audio();
+                                    audio.src = URL.createObjectURL(file);
+                                    audio.onloadedmetadata = () => {
+                                        const duration = audio.duration;
+                                        const durationMins = Math.ceil(duration / 60);
+
+                                        if (duration > 3600) {
+                                            setError('Audio duration exceeds the 60-minute limit.');
+                                            setAudioFile(null);
+                                        } else if (user && user.credits_balance < durationMins) {
+                                            setError(`Insufficient credits. This ${durationMins}m interview requires ${durationMins} credits. Your balance: ${user.credits_balance}`);
+                                            setAudioFile(null);
+                                        } else {
+                                            setAudioFile(file);
+                                            setError('');
+                                        }
+                                        URL.revokeObjectURL(audio.src);
+                                    };
+                                }}
                                 className="hidden"
                             />
                             {audioFile ? (
@@ -193,7 +223,7 @@ export default function SetupRecordingPage() {
                                         Drop your recording here
                                     </p>
                                     <p className="text-gray-500 dark:text-gray-400 font-medium">
-                                        MP3, WAV, or M4A format supported
+                                        Max 60 mins • MP3, WAV, or M4A
                                     </p>
                                 </div>
                             )}

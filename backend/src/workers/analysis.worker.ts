@@ -117,7 +117,7 @@ export async function saveAnalysisResults(
             }
         }
 
-        // 4. CRITICAL: Update overall score + status to 'ANALYZED' ONLY AT THE END
+        // 4. CRITICAL: Update overall score + status to 'ANALYZED'
         await client.query(
             'UPDATE interviews SET overall_score=$1, summary_text=$2, badge_label=$3, vocal_signals=$4, status=$5, top_strengths=$6, key_improvement_areas=$7, analysis_completed_at=NOW() WHERE id=$8',
             [
@@ -131,6 +131,40 @@ export async function saveAnalysisResults(
                 interviewId,
             ]
         );
+
+        // 5. Deduct Credits & Log Transaction
+        const interviewInfo = await client.query(
+            'SELECT interview_type, user_id FROM interviews WHERE id = $1',
+            [interviewId]
+        );
+        const { interview_type } = interviewInfo.rows[0];
+
+        let creditsToDeduct = 0;
+        let transType = 'ANALYSIS_SPENT';
+
+        if (interview_type === 'RECONSTRUCTED') {
+            creditsToDeduct = 10;
+            transType = 'RECONSTRUCT_SPENT';
+        } else {
+            const mediaInfo = await client.query(
+                "SELECT duration_secs FROM interview_media WHERE interview_id = $1 AND media_type = 'AUDIO' LIMIT 1",
+                [interviewId]
+            );
+            const durationSecs = mediaInfo.rows[0]?.duration_secs || 0;
+            creditsToDeduct = Math.ceil(durationSecs / 60);
+        }
+
+        if (creditsToDeduct > 0) {
+            await client.query(
+                'UPDATE users SET credits_balance = credits_balance - $1 WHERE id = $2',
+                [creditsToDeduct, userId]
+            );
+            await client.query(
+                'INSERT INTO credit_transactions (user_id, amount, transaction_type, interview_id, description) VALUES ($1, $2, $3, $4, $5)',
+                [userId, -creditsToDeduct, transType, interviewId, `Analysis of ${interview_type.toLowerCase()} interview`]
+            );
+            console.log(`[AnalysisWorker] 💸 Deducted ${creditsToDeduct} credits from user ${userId}`);
+        }
 
         await client.query('COMMIT');
         console.log(`[AnalysisWorker] 💎 Transaction committed. Database is now consistent.`);
@@ -372,27 +406,49 @@ async function handleSimulationAnalysis(job: Job<SimulationAnalyzeJobPayload>): 
 }
 
 // ── Worker Setup ────────────────────────────────────────────────
+let worker: Worker | null = null;
 
-export const analysisWorker = new Worker(
-    'interview',
-    async (job: Job) => {
-        switch (job.name) {
-            case 'analyze':
-                return handleAudioAnalysis(job as Job<AnalyzeJobPayload>);
-            case 'analyze-reconstruction':
-                return handleReconstructionAnalysis(job as Job<ReconstructionAnalyzeJobPayload>);
-            case 'analyze-simulation':
-                return handleSimulationAnalysis(job as Job<SimulationAnalyzeJobPayload>);
-            default:
-                console.warn(`[AnalysisWorker] Unknown job name: ${job.name}`);
+export function setupWorker() {
+    if (worker) return worker;
+
+    const redis = getRedis();
+    if (!redis) {
+        console.error('[AnalysisWorker] ❌ Redis unavailable — cannot start worker.');
+        return null;
+    }
+
+    console.log('[AnalysisWorker] 🚀 Initializing singleton worker instance...');
+    worker = new Worker(
+        'interview',
+        async (job: Job) => {
+            switch (job.name) {
+                case 'analyze':
+                    return handleAudioAnalysis(job as Job<AnalyzeJobPayload>);
+                case 'analyze-reconstruction':
+                    return handleReconstructionAnalysis(job as Job<ReconstructionAnalyzeJobPayload>);
+                case 'analyze-simulation':
+                    return handleSimulationAnalysis(job as Job<SimulationAnalyzeJobPayload>);
+                default:
+                    console.warn(`[AnalysisWorker] Unknown job name: ${job.name}`);
+            }
+        },
+        { 
+            connection: redis, 
+            concurrency: 2,
+            removeOnComplete: { count: 100 },
+            removeOnFail: { count: 200 }
         }
-    },
-    { connection: getRedis()!, concurrency: 2 }
-);
+    );
 
-analysisWorker.on('completed', (job) =>
-    console.log(`[AnalysisWorker] Job ${job.id} (${job.name}) completed`)
-);
-analysisWorker.on('failed', (job, err) =>
-    console.error(`[AnalysisWorker] Job ${job?.id} (${job?.name}) failed:`, err.message)
-);
+    worker.on('completed', (job) =>
+        console.log(`[AnalysisWorker] Job ${job.id} (${job.name}) completed`)
+    );
+    worker.on('failed', (job, err) =>
+        console.error(`[AnalysisWorker] Job ${job?.id} (${job?.name}) failed:`, err.message)
+    );
+
+    return worker;
+}
+
+// For backwards compatibility or manual access
+export { worker as analysisWorker };

@@ -24,10 +24,12 @@ import learnRoutes from './routes/learn.routes';
 
 // Workers (only start if Redis is available)
 import { getRedis } from './config/redis';
-if (getRedis()) {
-    import('./workers/analysis.worker').then(() =>
-        console.log('✅ Analysis worker started')
-    );
+const redis = getRedis();
+if (redis) {
+    import('./workers/analysis.worker').then((m) => {
+        m.setupWorker();
+        console.log('✅ Analysis worker initialized');
+    });
 }
 
 const app = express();
@@ -58,9 +60,18 @@ app.post('/interviews/webhook/analyze', async (req, res) => {
             console.log(`[Webhook] ✅ Analysis saved for interview ${interview_id}`);
             return res.json({ message: 'Analysis results saved' });
         } else {
-            await db.query("UPDATE interviews SET status = 'FAILED', failure_reason = $2 WHERE id = $1", [interview_id, error || 'AI analysis failed']);
-            console.error(`[Webhook] ❌ Failure for ${interview_id}: ${error}`);
-            return res.json({ message: 'Failure recorded' });
+            // Only mark as FAILED if it hasn't already been marked as ANALYZED by a successful parallel callback
+            const updateRes = await db.query(
+                "UPDATE interviews SET status = 'FAILED', failure_reason = $2 WHERE id = $1 AND status != 'ANALYZED'", 
+                [interview_id, error || 'AI analysis failed']
+            );
+            
+            if (updateRes.rowCount === 0) {
+                console.log(`[Webhook] ℹ️ Ignoring late failure for interview ${interview_id} as it is already ANALYZED.`);
+            } else {
+                console.error(`[Webhook] ❌ Failure recorded for ${interview_id}: ${error}`);
+            }
+            return res.json({ message: 'Failure handled' });
         }
     } catch (err: any) {
         console.error('[Webhook] Error:', err);

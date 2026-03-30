@@ -1,6 +1,10 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/login/page": "app/login/page.js",
+  "/icon.svg/route": "app/icon.svg/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
   "/dashboard/record/page": "app/dashboard/record/page.js",
-  "/dashboard/interviews/[id]/page": "app/dashboard/interviews/[id]/page.js",
   "/dashboard/record/analyzing/[id]/page": "app/dashboard/record/analyzing/[id]/page.js",
-  "/dashboard/page": "app/dashboard/page.js"
+  "/dashboard/prepare/page": "app/dashboard/prepare/page.js",
+  "/dashboard/interviews/[id]/page": "app/dashboard/interviews/[id]/page.js"
 }

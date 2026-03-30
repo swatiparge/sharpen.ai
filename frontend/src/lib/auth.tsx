@@ -7,6 +7,7 @@ interface User {
     email: string;
     full_name: string;
     avatar_url?: string;
+    credits_balance: number;
 }
 
 interface AuthContextType {
@@ -15,6 +16,7 @@ interface AuthContextType {
     isLoading: boolean;
     login: (user: User, token: string) => void;
     logout: () => void;
+    refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -23,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
     isLoading: true,
     login: () => { },
     logout: () => { },
+    refreshUser: async () => { },
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -55,12 +58,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('sharpen_user');
     };
 
+    const refreshUser = async () => {
+        if (!token) return;
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/me`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setUser(data.user);
+                localStorage.setItem('sharpen_user', JSON.stringify(data.user));
+            }
+        } catch (err) {
+            console.error('Failed to refresh user:', err);
+        }
+    };
+
     const value = useMemo(() => ({
         user,
         token,
         isLoading,
         login,
-        logout
+        logout,
+        refreshUser
     }), [user, token, isLoading]);
 
     return (

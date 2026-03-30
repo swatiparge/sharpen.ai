@@ -105,14 +105,41 @@ router.post('/:id/analyze', async (req: AuthRequest, res: Response) => {
   try {
     console.log(`[Analyze] Starting analysis for interview ${id}, user ${req.userId}`);
     
+    // 1. Fetch interview and user credits
+    const userResult = await db.query('SELECT credits_balance FROM users WHERE id = $1', [req.userId]);
+    const credits = userResult.rows[0]?.credits_balance || 0;
+
     const interview = await db.query(
-      'SELECT * FROM interviews WHERE id = $1 AND user_id = $2',
+      `SELECT i.*, m.duration_secs FROM interviews i 
+       LEFT JOIN interview_media m ON m.interview_id = i.id AND m.media_type = 'AUDIO'
+       WHERE i.id = $1 AND i.user_id = $2`,
       [id, req.userId]
     );
     if (!interview.rows[0]) return res.status(404).json({ error: 'Interview not found' });
 
     const interviewType = interview.rows[0].interview_type;
-    console.log(`[Analyze] Interview type: ${interviewType}`);
+    const durationSecs = interview.rows[0].duration_secs || 0;
+    const durationMins = Math.ceil(durationSecs / 60);
+
+    // 2. Enforce 60-minute limit for audio
+    if (interviewType !== 'RECONSTRUCTED' && durationSecs > 3600) {
+        return res.status(400).json({ 
+            error: 'Audio duration exceeds the 60-minute limit. Please upload a shorter file.' 
+        });
+    }
+
+    // 3. Check credits
+    if (interviewType === 'RECONSTRUCTED') {
+        if (credits < 10) {
+            return res.status(403).json({ error: 'Insufficient credits. Reconstruction requires 10 credits.' });
+        }
+    } else {
+        if (credits < durationMins) {
+            return res.status(403).json({ 
+                error: `Insufficient credits. This ${durationMins}m analysis requires ${durationMins} credits. Your balance: ${credits}` 
+            });
+        }
+    }
 
     await db.query("UPDATE interviews SET status = 'ANALYZING' WHERE id = $1", [id]);
 
@@ -125,14 +152,13 @@ router.post('/:id/analyze', async (req: AuthRequest, res: Response) => {
       }).catch(err => console.error('[Analyze] Queue add failed:', err));
     } else {
       // Audio-based analysis for recorded interviews
-      const media = await db.query(
-        "SELECT * FROM interview_media WHERE interview_id = $1 AND media_type = 'AUDIO' LIMIT 1",
+      const mediaPath = await db.query(
+        "SELECT storage_path FROM interview_media WHERE interview_id = $1 AND media_type = 'AUDIO' LIMIT 1",
         [id]
       );
-      const mediaPath = media.rows[0]?.storage_path;
-      console.log(`[Analyze] Media path: ${mediaPath || 'NOT FOUND'}`);
+      const storagePath = mediaPath.rows[0]?.storage_path;
 
-      if (!mediaPath) {
+      if (!storagePath) {
         console.error(`[Analyze] No audio media found for interview ${id}`);
         await db.query(
           "UPDATE interviews SET status = 'FAILED', failure_reason = 'No audio file found' WHERE id = $1",
@@ -146,7 +172,7 @@ router.post('/:id/analyze', async (req: AuthRequest, res: Response) => {
       interviewQueue.add('analyze', {
         interviewId: id,
         userId: req.userId,
-        mediaUrl: mediaPath,
+        mediaUrl: storagePath,
       }).catch(err => console.error('[Analyze] Queue add failed:', err));
     }
 

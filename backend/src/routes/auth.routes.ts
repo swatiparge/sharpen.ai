@@ -6,6 +6,7 @@ import { db } from '../db/client';
 import { config } from '../config';
 import { validate } from '../validators';
 import { signupSchema, loginSchema, googleAuthSchema } from '../validators/auth.validators';
+import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 
 const router = Router();
 const googleClient = new OAuth2Client(config.google.clientId);
@@ -71,10 +72,16 @@ router.post('/google', authLimiter, validate(googleAuthSchema), async (req: Requ
             const result = await db.query(
                 `INSERT INTO users (email, full_name, google_id, avatar_url)
                  VALUES ($1, $2, $3, $4)
-                 RETURNING id, email, full_name, google_id, avatar_url, created_at`,
+                 RETURNING id, email, full_name, google_id, avatar_url, credits_balance, created_at`,
                 [email, name || email, googleId, picture]
             );
             user = result.rows[0];
+
+            // Log welcome bonus transaction
+            await db.query(
+                'INSERT INTO credit_transactions (user_id, amount, transaction_type, description) VALUES ($1, $2, $3, $4)',
+                [user.id, 60, 'WELCOME_BONUS', 'Initial welcome bonus (60 mins)']
+            );
         } else if (!user.google_id) {
             // Link Google account to existing email user
             await db.query(
@@ -100,10 +107,10 @@ router.post('/google', authLimiter, validate(googleAuthSchema), async (req: Requ
 
         return res.json({
             user: {
-                id: user.id,
                 email: user.email,
                 full_name: user.full_name,
                 avatar_url: user.avatar_url,
+                credits_balance: user.credits_balance,
             },
             token,
             onboarding_done: onboarding.rows[0]?.onboarding_done || false,
@@ -124,10 +131,16 @@ router.post('/signup', authLimiter, validate(signupSchema), async (req: Request,
         }
         const password_hash = await bcrypt.hash(password, 12);
         const result = await db.query(
-            'INSERT INTO users (email, password_hash, full_name) VALUES ($1, $2, $3) RETURNING id, email, full_name, created_at',
+            'INSERT INTO users (email, password_hash, full_name) VALUES ($1, $2, $3) RETURNING id, email, full_name, credits_balance, created_at',
             [email, password_hash, full_name]
         );
         const user = result.rows[0];
+
+        // Log welcome bonus transaction
+        await db.query(
+            'INSERT INTO credit_transactions (user_id, amount, transaction_type, description) VALUES ($1, $2, $3, $4)',
+            [user.id, 60, 'WELCOME_BONUS', 'Initial welcome bonus (60 mins)']
+        );
 
         // Update last login
         await db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
@@ -161,12 +174,33 @@ router.post('/login', authLimiter, validate(loginSchema), async (req: Request, r
         await db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
 
         return res.json({
-            user: { id: user.id, email: user.email, full_name: user.full_name },
+            user: { 
+                id: user.id, 
+                email: user.email, 
+                full_name: user.full_name,
+                credits_balance: user.credits_balance 
+            },
             token,
         });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'Server error during login' });
+    }
+});
+
+// GET /auth/me – get current user profile (with credits)
+router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const result = await db.query(
+            'SELECT id, email, full_name, avatar_url, credits_balance FROM users WHERE id = $1',
+            [req.userId]
+        );
+        const user = result.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        return res.json({ user });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Server error' });
     }
 });
 
